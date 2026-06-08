@@ -13,6 +13,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.sql.Clob;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
@@ -92,6 +93,11 @@ class DamengClient {
                     }
                     return new ArrayList<>(schemas);
                 }
+            } catch (SQLException e) {
+                if (currentUser != null && !currentUser.isBlank()) {
+                    return List.of(currentUser);
+                }
+                throw e;
             }
         }
     }
@@ -213,7 +219,7 @@ class DamengClient {
                 stmt.setString(2, normalizeIdentifier(view));
                 try (ResultSet rs = stmt.executeQuery()) {
                     if (rs.next()) {
-                        String text = rs.getString("TEXT");
+                        String text = textValue(rs, "TEXT");
                         return text == null ? "" : text;
                     }
                     return "";
@@ -260,6 +266,51 @@ class DamengClient {
                 snapshot.add(item);
             }
             return snapshot;
+        }
+    }
+
+    List<Map<String, JsonNode>> getRoutines(ConnectionParams params, String schema) throws SQLException {
+        try (Connection conn = connect(params)) {
+            String owner = resolveSchema(conn, schema);
+            Map<String, String> definitions = getRoutineDefinitions(conn, owner);
+            try (PreparedStatement stmt = conn.prepareStatement("""
+                    SELECT OBJECT_NAME, OBJECT_TYPE
+                    FROM ALL_PROCEDURES
+                    WHERE OWNER = ?
+                      AND PROCEDURE_NAME IS NULL
+                      AND OBJECT_TYPE IN ('FUNCTION', 'PROCEDURE')
+                    ORDER BY OBJECT_TYPE, OBJECT_NAME
+                    """)) {
+                stmt.setQueryTimeout(settings().queryTimeoutSec());
+                stmt.setString(1, owner);
+                try (ResultSet rs = stmt.executeQuery()) {
+                    List<Map<String, JsonNode>> routines = new ArrayList<>();
+                    while (rs.next()) {
+                        String name = rs.getString("OBJECT_NAME");
+                        String type = normalizeRoutineType(rs.getString("OBJECT_TYPE"));
+                        String definition = definitions.get(name);
+                        if (definition == null || definition.isBlank()) {
+                            definition = routineSignature(type, name, getRoutineParameters(conn, owner, name));
+                        }
+
+                        Map<String, JsonNode> item = new LinkedHashMap<>();
+                        item.put("name", Json.NODES.textNode(name));
+                        item.put("routine_type", Json.NODES.textNode(type));
+                        item.put("definition", definition == null || definition.isBlank()
+                                ? Json.NODES.nullNode()
+                                : Json.NODES.textNode(definition));
+                        routines.add(item);
+                    }
+                    return routines;
+                }
+            }
+        }
+    }
+
+    List<Map<String, JsonNode>> getRoutineParameters(ConnectionParams params, String routineName, String schema) throws SQLException {
+        try (Connection conn = connect(params)) {
+            String owner = resolveSchema(conn, schema);
+            return getRoutineParameters(conn, owner, routineName);
         }
     }
 
@@ -397,11 +448,77 @@ class DamengClient {
                     item.put("column_name", Json.NODES.textNode(rs.getString("COLUMN_NAME")));
                     item.put("ref_table", Json.NODES.textNode(rs.getString("REF_TABLE")));
                     item.put("ref_column", Json.NODES.textNode(rs.getString("REF_COLUMN")));
-                    item.put("on_delete", nullableText(rs.getString("DELETE_RULE")));
+                    item.put("on_delete", nullableText(normalizeForeignKeyAction(rs.getString("DELETE_RULE"))));
                     item.put("on_update", Json.NODES.nullNode());
                     fks.add(item);
                 }
                 return fks;
+            }
+        }
+    }
+
+    private Map<String, String> getRoutineDefinitions(Connection conn, String owner) throws SQLException {
+        try (PreparedStatement stmt = conn.prepareStatement("""
+                SELECT NAME, TEXT
+                FROM ALL_SOURCE
+                WHERE OWNER = ?
+                  AND TYPE IN ('FUNCTION', 'PROCEDURE')
+                ORDER BY NAME, TYPE, LINE
+                """)) {
+            stmt.setQueryTimeout(settings().queryTimeoutSec());
+            stmt.setString(1, owner);
+            try (ResultSet rs = stmt.executeQuery()) {
+                Map<String, StringBuilder> builders = new LinkedHashMap<>();
+                while (rs.next()) {
+                    String name = rs.getString("NAME");
+                    String text = textValue(rs, "TEXT");
+                    if (name != null && text != null) {
+                        builders.computeIfAbsent(name, ignored -> new StringBuilder()).append(text);
+                    }
+                }
+
+                Map<String, String> definitions = new LinkedHashMap<>();
+                builders.forEach((name, builder) -> {
+                    String definition = builder.toString().strip();
+                    if (!definition.isBlank()) {
+                        definitions.put(name, definition);
+                    }
+                });
+                return definitions;
+            }
+        } catch (SQLException e) {
+            return Map.of();
+        }
+    }
+
+    private List<Map<String, JsonNode>> getRoutineParameters(Connection conn, String owner, String routineName) throws SQLException {
+        try (PreparedStatement stmt = conn.prepareStatement("""
+                SELECT ARGUMENT_NAME, DATA_TYPE, IN_OUT, POSITION, SEQUENCE
+                FROM ALL_ARGUMENTS
+                WHERE OWNER = ?
+                  AND OBJECT_NAME = ?
+                  AND DATA_LEVEL = 0
+                ORDER BY SEQUENCE
+                """)) {
+            stmt.setQueryTimeout(settings().queryTimeoutSec());
+            stmt.setString(1, owner);
+            stmt.setString(2, normalizeIdentifier(routineName));
+            try (ResultSet rs = stmt.executeQuery()) {
+                List<Map<String, JsonNode>> params = new ArrayList<>();
+                while (rs.next()) {
+                    Map<String, JsonNode> item = new LinkedHashMap<>();
+                    String name = rs.getString("ARGUMENT_NAME");
+                    String dataType = rs.getString("DATA_TYPE");
+                    String mode = normalizeParameterMode(rs.getString("IN_OUT"));
+                    int position = rs.getInt("POSITION");
+                    int sequence = rs.getInt("SEQUENCE");
+                    item.put("name", Json.NODES.textNode(name == null ? "" : name));
+                    item.put("data_type", Json.NODES.textNode(dataType == null ? "" : dataType));
+                    item.put("mode", Json.NODES.textNode(mode));
+                    item.put("ordinal_position", Json.NODES.numberNode(position >= 0 ? position : sequence));
+                    params.add(item);
+                }
+                return params;
             }
         }
     }
@@ -418,6 +535,95 @@ class DamengClient {
 
     private static JsonNode nullableText(String value) {
         return value == null || value.isBlank() ? Json.NODES.nullNode() : Json.NODES.textNode(value);
+    }
+
+    static String normalizeForeignKeyAction(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value.strip().toUpperCase(Locale.ROOT).replace('_', ' ');
+    }
+
+    static String normalizeParameterMode(String value) {
+        if (value == null || value.isBlank()) {
+            return "IN";
+        }
+        String normalized = value.strip().toUpperCase(Locale.ROOT).replace('/', ' ');
+        if (normalized.contains("OUT") && normalized.contains("IN")) {
+            return "INOUT";
+        }
+        if (normalized.contains("OUT")) {
+            return "OUT";
+        }
+        return "IN";
+    }
+
+    static String routineSignature(String routineType, String routineName, List<Map<String, JsonNode>> parameters) {
+        String type = normalizeRoutineType(routineType);
+        List<String> args = new ArrayList<>();
+        String returnType = null;
+        for (Map<String, JsonNode> parameter : parameters) {
+            String name = nodeText(parameter.get("name"));
+            String dataType = nodeText(parameter.get("data_type"));
+            String mode = normalizeParameterMode(nodeText(parameter.get("mode")));
+            int ordinal = parameter.getOrDefault("ordinal_position", Json.NODES.numberNode(-1)).asInt(-1);
+            if ("FUNCTION".equals(type) && ordinal == 0 && "OUT".equals(mode)) {
+                returnType = dataType;
+                continue;
+            }
+            StringBuilder arg = new StringBuilder();
+            if (mode != null && !mode.isBlank()) {
+                arg.append(mode).append(' ');
+            }
+            if (name != null && !name.isBlank()) {
+                arg.append(name).append(' ');
+            }
+            if (dataType != null && !dataType.isBlank()) {
+                arg.append(dataType);
+            }
+            String rendered = arg.toString().strip();
+            if (!rendered.isBlank()) {
+                args.add(rendered);
+            }
+        }
+
+        StringBuilder signature = new StringBuilder(type).append(' ').append(routineName).append('(')
+                .append(String.join(", ", args)).append(')');
+        if ("FUNCTION".equals(type) && returnType != null && !returnType.isBlank()) {
+            signature.append(" RETURN ").append(returnType);
+        }
+        return signature.toString();
+    }
+
+    private static String normalizeRoutineType(String value) {
+        if (value == null || value.isBlank()) {
+            return "PROCEDURE";
+        }
+        String normalized = value.strip().toUpperCase(Locale.ROOT);
+        return "FUNCTION".equals(normalized) ? "FUNCTION" : "PROCEDURE";
+    }
+
+    private static String textValue(ResultSet rs, String column) throws SQLException {
+        Object value = rs.getObject(column);
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Clob clob) {
+            long length = clob.length();
+            if (length <= 0) {
+                return "";
+            }
+            return clob.getSubString(1, Math.toIntExact(Math.min(length, Integer.MAX_VALUE)));
+        }
+        return rs.getString(column);
+    }
+
+    private static String nodeText(JsonNode node) {
+        if (node == null || node.isMissingNode() || node.isNull()) {
+            return null;
+        }
+        String value = node.asText();
+        return value == null || value.isBlank() ? null : value;
     }
 
     private PluginSettings settings() {

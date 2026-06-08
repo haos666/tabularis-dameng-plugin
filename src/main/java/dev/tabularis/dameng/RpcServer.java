@@ -74,6 +74,12 @@ final class RpcServer {
                     requiredText(params, "view_name"),
                     text(params.path("schema"))
             ));
+            case "get_routines" -> columns(client.getRoutines(connectionParams(params), text(params.path("schema"))));
+            case "get_routine_parameters" -> columns(client.getRoutineParameters(
+                    connectionParams(params),
+                    requiredText(params, "routine_name"),
+                    text(params.path("schema"))
+            ));
             case "get_all_columns_batch" -> client.getAllColumnsBatch(connectionParams(params), text(params.path("schema")));
             case "get_all_foreign_keys_batch" -> client.getAllForeignKeysBatch(connectionParams(params), text(params.path("schema")));
             case "get_schema_snapshot" -> client.getSchemaSnapshot(connectionParams(params), text(params.path("schema")));
@@ -83,7 +89,6 @@ final class RpcServer {
                     optionalInt(params.path("limit")),
                     intValue(params.path("page"), 1)
             );
-            case "get_routines", "get_routine_parameters" -> Json.NODES.arrayNode();
             case "insert_record", "update_record", "delete_record",
                     "get_create_table_sql", "get_add_column_sql", "get_alter_column_sql",
                     "get_create_index_sql", "get_create_foreign_key_sql",

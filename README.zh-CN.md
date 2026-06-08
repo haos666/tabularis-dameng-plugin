@@ -12,13 +12,14 @@
 - 列出 schema、表、列
 - 列出索引和外键
 - 列出视图、查看视图定义、加载视图列
+- 列出函数/过程和 routine 参数
 - 批量返回列和外键元数据，加快 Tabularis 浏览
 - 返回 schema 快照，支持 Tabularis ER 图
 - 执行只读 SQL 查询
 - 返回 Tabularis 兼容的结果集
 - 拒绝写入、CRUD 和 DDL 操作
 
-插件仍然保持只读。存储过程、触发器、写操作、DDL、表结构管理、视图管理和 UI 扩展暂不实现。
+插件仍然保持只读。routine 执行、触发器、写操作、DDL、表结构管理、视图管理和 UI 扩展暂不实现。
 
 ## 环境要求
 
@@ -43,7 +44,7 @@ chmod +x dameng-plugin
 构建产物位置：
 
 ```text
-target/tabularis-dameng-plugin-0.2.0.jar
+target/tabularis-dameng-plugin-0.3.0.jar
 ```
 
 ## 本地安装
@@ -61,7 +62,7 @@ PLUGIN_DIR="$HOME/Library/Application Support/com.debba.tabularis/plugins/dameng
 
 mkdir -p "$PLUGIN_DIR/target"
 cp manifest.json dameng-plugin dameng-plugin.bat "$PLUGIN_DIR/"
-cp target/tabularis-dameng-plugin-0.2.0.jar "$PLUGIN_DIR/target/"
+cp target/tabularis-dameng-plugin-0.3.0.jar "$PLUGIN_DIR/target/"
 chmod +x "$PLUGIN_DIR/dameng-plugin"
 ```
 
@@ -109,9 +110,11 @@ schema 由 Tabularis 单独选择和传递。
 - 外键：订单关联客户、订单明细关联订单、订单明细关联产品
 - 索引：客户/订单/产品查询索引，以及 `UX_PRODUCTS_SKU`
 - 视图：`V_ORDER_SUMMARY`、`V_ORDER_DETAIL`、`V_CUSTOMER_LIFETIME_VALUE`、`V_PRODUCT_SALES`
-- 为后续 routine 元数据预留的对象：`FN_CUSTOMER_ORDER_COUNT`、`FN_CUSTOMER_TOTAL_AMOUNT`、`P_REFRESH_ORDER_STATS`
+- 函数/过程：`FN_CUSTOMER_ORDER_COUNT`、`FN_CUSTOMER_TOTAL_AMOUNT`、`P_REFRESH_ORDER_STATS`
 
-这套数据已在 Tabularis 本地验证通过：schema、表、列、索引、外键、视图、视图列、视图查询和 ER 元数据都可以通过 `DM` 插件正常展示。
+这套数据已在 Tabularis 本地验证通过：schema、表、列、索引、外键、视图、视图列、视图查询、函数/过程、routine 参数和 ER 元数据都可以通过 `DM` 插件正常展示。
+
+可复用初始化脚本在 `docs/demo-schema.sql`。
 
 ## 开发说明
 
@@ -122,13 +125,15 @@ schema 由 Tabularis 单独选择和传递。
 - `get_databases` 返回可见 schema，方便 Tabularis 连接窗口中的“加载数据库”按钮有可选值。
 - `get_schema_snapshot` 返回表、列和外键，供 Tabularis ER 图使用。
 - `get_views`、`get_view_definition`、`get_view_columns` 只做只读查看。
+- `get_routines`、`get_routine_parameters` 只暴露函数/过程元数据。
+- routine 定义优先读取 `ALL_SOURCE`；如果达梦未保存源码或权限不足，插件会返回生成的签名。
 
 ## 发布包内容
 
 发布产物命名示例：
 
 ```text
-tabularis-dameng-plugin-0.2.0.zip
+tabularis-dameng-plugin-0.3.0.zip
 ```
 
 zip 应包含：
@@ -137,7 +142,7 @@ zip 应包含：
 dameng-plugin
 dameng-plugin.bat
 manifest.json
-target/tabularis-dameng-plugin-0.2.0.jar
+target/tabularis-dameng-plugin-0.3.0.jar
 ```
 
 不要包含：

@@ -12,13 +12,14 @@ This plugin runs as a standalone Java process and talks to Tabularis through JSO
 - List schemas, tables, and columns
 - List indexes and foreign keys
 - List views, inspect view definitions, and load view columns
+- List stored functions/procedures and routine parameters
 - Return batch column and foreign key metadata for faster browsing
 - Return schema snapshots for Tabularis ER diagrams
 - Execute read-only SQL queries
 - Return Tabularis-compatible result sets
 - Refuse write, CRUD, and DDL operations
 
-This is still a read-only driver. Routines, triggers, write operations, DDL, table management, view management, and UI extensions are intentionally out of scope.
+This is still a read-only driver. Routine execution, triggers, write operations, DDL, table management, view management, and UI extensions are intentionally out of scope.
 
 ## Requirements
 
@@ -43,7 +44,7 @@ chmod +x dameng-plugin
 The executable jar is written to:
 
 ```text
-target/tabularis-dameng-plugin-0.2.0.jar
+target/tabularis-dameng-plugin-0.3.0.jar
 ```
 
 ## Install Locally
@@ -61,7 +62,7 @@ PLUGIN_DIR="$HOME/Library/Application Support/com.debba.tabularis/plugins/dameng
 
 mkdir -p "$PLUGIN_DIR/target"
 cp manifest.json dameng-plugin dameng-plugin.bat "$PLUGIN_DIR/"
-cp target/tabularis-dameng-plugin-0.2.0.jar "$PLUGIN_DIR/target/"
+cp target/tabularis-dameng-plugin-0.3.0.jar "$PLUGIN_DIR/target/"
 chmod +x "$PLUGIN_DIR/dameng-plugin"
 ```
 
@@ -109,9 +110,11 @@ For local validation, the `DEV2` schema in the Dameng Docker instance was popula
 - Foreign keys: orders to customers, order items to orders, and order items to products
 - Indexes: customer/order/product lookup indexes plus `UX_PRODUCTS_SKU`
 - Views: `V_ORDER_SUMMARY`, `V_ORDER_DETAIL`, `V_CUSTOMER_LIFETIME_VALUE`, `V_PRODUCT_SALES`
-- Routines for future routine metadata work: `FN_CUSTOMER_ORDER_COUNT`, `FN_CUSTOMER_TOTAL_AMOUNT`, `P_REFRESH_ORDER_STATS`
+- Routines: `FN_CUSTOMER_ORDER_COUNT`, `FN_CUSTOMER_TOTAL_AMOUNT`, `P_REFRESH_ORDER_STATS`
 
-Tabularis has been verified locally with this dataset: schemas, tables, columns, indexes, foreign keys, views, view columns, view queries, and ER metadata all render through the `DM` plugin.
+Tabularis has been verified locally with this dataset: schemas, tables, columns, indexes, foreign keys, views, view columns, view queries, routines, routine parameters, and ER metadata all render through the `DM` plugin.
+
+The reusable setup script is available at `docs/demo-schema.sql`.
 
 ## Development Notes
 
@@ -122,13 +125,15 @@ Tabularis has been verified locally with this dataset: schemas, tables, columns,
 - `get_databases` returns visible schemas so the Tabularis connection dialog has a useful value for "Load Databases".
 - `get_schema_snapshot` returns tables, columns, and foreign keys for Tabularis ER diagrams.
 - `get_views`, `get_view_definition`, and `get_view_columns` are read-only inspection helpers.
+- `get_routines` and `get_routine_parameters` expose read-only stored function/procedure metadata.
+- routine definitions use `ALL_SOURCE` when available; otherwise the plugin returns a generated signature.
 
 ## Release Packaging
 
 Release artifacts are named like:
 
 ```text
-tabularis-dameng-plugin-0.2.0.zip
+tabularis-dameng-plugin-0.3.0.zip
 ```
 
 The zip should include:
@@ -137,7 +142,7 @@ The zip should include:
 dameng-plugin
 dameng-plugin.bat
 manifest.json
-target/tabularis-dameng-plugin-0.2.0.jar
+target/tabularis-dameng-plugin-0.3.0.jar
 ```
 
 Do not include:
