@@ -101,6 +101,18 @@ jdbc:dm://host:port
 
 schema 由 Tabularis 单独选择和传递。
 
+## 本地演示 schema
+
+本地验证时，Docker 达梦实例里的 `DEV2` schema 已准备了一组销售业务演示数据：
+
+- 表：`CUSTOMERS`、`PRODUCTS`、`ORDERS`、`ORDER_ITEMS`
+- 外键：订单关联客户、订单明细关联订单、订单明细关联产品
+- 索引：客户/订单/产品查询索引，以及 `UX_PRODUCTS_SKU`
+- 视图：`V_ORDER_SUMMARY`、`V_ORDER_DETAIL`、`V_CUSTOMER_LIFETIME_VALUE`、`V_PRODUCT_SALES`
+- 为后续 routine 元数据预留的对象：`FN_CUSTOMER_ORDER_COUNT`、`FN_CUSTOMER_TOTAL_AMOUNT`、`P_REFRESH_ORDER_STATS`
+
+这套数据已在 Tabularis 本地验证通过：schema、表、列、索引、外键、视图、视图列、视图查询和 ER 元数据都可以通过 `DM` 插件正常展示。
+
 ## 开发说明
 
 - stdout 只输出 JSON-RPC 响应。

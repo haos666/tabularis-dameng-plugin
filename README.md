@@ -101,6 +101,18 @@ jdbc:dm://host:port
 
 Schema selection is handled separately through Tabularis.
 
+## Local Demo Schema
+
+For local validation, the `DEV2` schema in the Dameng Docker instance was populated with a small sales dataset:
+
+- Tables: `CUSTOMERS`, `PRODUCTS`, `ORDERS`, `ORDER_ITEMS`
+- Foreign keys: orders to customers, order items to orders, and order items to products
+- Indexes: customer/order/product lookup indexes plus `UX_PRODUCTS_SKU`
+- Views: `V_ORDER_SUMMARY`, `V_ORDER_DETAIL`, `V_CUSTOMER_LIFETIME_VALUE`, `V_PRODUCT_SALES`
+- Routines for future routine metadata work: `FN_CUSTOMER_ORDER_COUNT`, `FN_CUSTOMER_TOTAL_AMOUNT`, `P_REFRESH_ORDER_STATS`
+
+Tabularis has been verified locally with this dataset: schemas, tables, columns, indexes, foreign keys, views, view columns, view queries, and ER metadata all render through the `DM` plugin.
+
 ## Development Notes
 
 - stdout is reserved for JSON-RPC responses only.
