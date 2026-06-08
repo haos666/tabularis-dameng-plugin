@@ -86,6 +86,13 @@ final class RpcServer {
                     text(params.path("routine_type")),
                     text(params.path("schema"))
             ));
+            case "get_triggers" -> columns(client.getTriggers(connectionParams(params), text(params.path("schema"))));
+            case "get_trigger_definition" -> Json.NODES.textNode(client.getTriggerDefinition(
+                    connectionParams(params),
+                    requiredText(params, "trigger_name"),
+                    requiredText(params, "table_name"),
+                    text(params.path("schema"))
+            ));
             case "get_all_columns_batch" -> client.getAllColumnsBatch(connectionParams(params), text(params.path("schema")));
             case "get_all_foreign_keys_batch" -> client.getAllForeignKeysBatch(connectionParams(params), text(params.path("schema")));
             case "get_schema_snapshot" -> client.getSchemaSnapshot(connectionParams(params), text(params.path("schema")));
@@ -95,11 +102,16 @@ final class RpcServer {
                     optionalInt(params.path("limit")),
                     intValue(params.path("page"), 1)
             );
+            case "explain_query" -> client.explainQuery(
+                    connectionParams(params),
+                    requiredText(params, "query"),
+                    booleanValue(params.path("analyze")),
+                    text(params.path("schema"))
+            );
             case "insert_record", "update_record", "delete_record",
                     "get_create_table_sql", "get_add_column_sql", "get_alter_column_sql",
                     "get_create_index_sql", "get_create_foreign_key_sql",
-                    "drop_index", "drop_foreign_key", "create_view", "alter_view", "drop_view",
-                    "explain_query" -> throw new RpcException(-32601, "method '" + method + "' is not implemented by the read-only Dameng plugin");
+                    "drop_index", "drop_foreign_key", "create_view", "alter_view", "drop_view" -> throw new RpcException(-32601, "method '" + method + "' is not implemented by the read-only Dameng plugin");
             default -> throw new RpcException(-32601, "method '" + method + "' is not implemented");
         };
     }
@@ -191,5 +203,9 @@ final class RpcServer {
             return fallback;
         }
         return node.asInt(fallback);
+    }
+
+    private static boolean booleanValue(JsonNode node) {
+        return node != null && !node.isMissingNode() && !node.isNull() && node.asBoolean(false);
     }
 }

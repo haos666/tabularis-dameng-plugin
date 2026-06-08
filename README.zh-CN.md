@@ -13,6 +13,8 @@
 - 列出索引和外键
 - 列出视图、查看视图定义、加载视图列
 - 列出函数/过程和 routine 参数
+- 返回达梦 EXPLAIN 查询计划，支持 Tabularis Visual Explain
+- 预实现 trigger 元数据 RPC，等待 Tabularis 主项目后续插件桥接
 - 批量返回列和外键元数据，加快 Tabularis 浏览
 - 返回 schema 快照，支持 Tabularis ER 图
 - 执行只读 SQL 查询
@@ -44,7 +46,7 @@ chmod +x dameng-plugin
 构建产物位置：
 
 ```text
-target/tabularis-dameng-plugin-0.3.1.jar
+target/tabularis-dameng-plugin-0.4.0.jar
 ```
 
 ## 本地安装
@@ -62,7 +64,7 @@ PLUGIN_DIR="$HOME/Library/Application Support/com.debba.tabularis/plugins/dameng
 
 mkdir -p "$PLUGIN_DIR/target"
 cp manifest.json dameng-plugin dameng-plugin.bat "$PLUGIN_DIR/"
-cp target/tabularis-dameng-plugin-0.3.1.jar "$PLUGIN_DIR/target/"
+cp target/tabularis-dameng-plugin-0.4.0.jar "$PLUGIN_DIR/target/"
 chmod +x "$PLUGIN_DIR/dameng-plugin"
 ```
 
@@ -111,8 +113,9 @@ schema 由 Tabularis 单独选择和传递。
 - 索引：客户/订单/产品查询索引，以及 `UX_PRODUCTS_SKU`
 - 视图：`V_ORDER_SUMMARY`、`V_ORDER_DETAIL`、`V_CUSTOMER_LIFETIME_VALUE`、`V_PRODUCT_SALES`
 - 函数/过程：`FN_CUSTOMER_ORDER_COUNT`、`FN_CUSTOMER_TOTAL_AMOUNT`、`P_REFRESH_ORDER_STATS`
+- 触发器：`TRG_ORDERS_AUDIT`
 
-这套数据已在 Tabularis 本地验证通过：schema、表、列、索引、外键、视图、视图列、视图查询、函数/过程、routine 参数和 ER 元数据都可以通过 `DM` 插件正常展示。
+这套数据已在 Tabularis 本地验证通过：schema、表、列、索引、外键、视图、视图列、视图查询、函数/过程、routine 参数、Visual Explain 和 ER 元数据都可以通过 `DM` 插件正常展示。
 
 可复用初始化脚本在 `docs/demo-schema.sql`。
 
@@ -127,13 +130,15 @@ schema 由 Tabularis 单独选择和传递。
 - `get_views`、`get_view_definition`、`get_view_columns` 只做只读查看。
 - `get_routines`、`get_routine_parameters` 只暴露函数/过程元数据。
 - routine 定义优先读取 `ALL_SOURCE`；如果达梦未保存源码或权限不足，插件会返回生成的签名。
+- `explain_query` 使用达梦 `EXPLAIN FOR`，把 JDBC 返回的计划行解析为 Tabularis `ExplainPlan` 树，并保留原始计划行；旧的文本 EXPLAIN 解析保留为兜底。
+- `get_triggers`、`get_trigger_definition` 已在插件侧实现；但当前 Tabularis external plugin driver 版本可能还不会调用它们，需要主项目后续增加 trigger RPC 转发。
 
 ## 发布包内容
 
 发布产物命名示例：
 
 ```text
-tabularis-dameng-plugin-0.3.1.zip
+tabularis-dameng-plugin-0.4.0.zip
 ```
 
 zip 应包含：
@@ -142,7 +147,7 @@ zip 应包含：
 dameng-plugin
 dameng-plugin.bat
 manifest.json
-target/tabularis-dameng-plugin-0.3.1.jar
+target/tabularis-dameng-plugin-0.4.0.jar
 ```
 
 不要包含：

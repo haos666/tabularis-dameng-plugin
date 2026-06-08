@@ -60,4 +60,20 @@ final class DamengClientTest {
                 DamengClient.routineSignature("PROCEDURE", "P_REFRESH_ORDER_STATS", List.of())
         );
     }
+
+    @Test
+    void normalizesTriggerMetadata() {
+        assertEquals("UPDATE", DamengClient.normalizeTriggerEvent("update"));
+        assertEquals("INSERT OR UPDATE", DamengClient.normalizeTriggerEvent("insert_or_update"));
+        assertEquals("AFTER", DamengClient.normalizeTriggerTiming("after each row"));
+        assertEquals("INSTEAD OF", DamengClient.normalizeTriggerTiming("instead_of"));
+    }
+
+    @Test
+    void buildsTriggerDefinitionFallback() {
+        assertEquals(
+                "TRIGGER TRG_ORDERS_AUDIT AFTER UPDATE ON ORDERS",
+                DamengClient.triggerDefinition(null, null, "TRG_ORDERS_AUDIT", "ORDERS", "AFTER", "UPDATE")
+        );
+    }
 }

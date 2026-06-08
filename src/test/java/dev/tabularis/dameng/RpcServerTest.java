@@ -116,6 +116,44 @@ final class RpcServerTest {
     }
 
     @Test
+    void explainQueryDispatchesToMetadataClient() throws Exception {
+        RpcServer server = new RpcServer(new StubDamengClient());
+
+        var response = Json.MAPPER.readTree(server.handleLine("""
+                {"jsonrpc":"2.0","method":"explain_query","params":{"params":{},"schema":"DEV2","query":"SELECT * FROM ORDERS","analyze":true},"id":15}
+                """));
+
+        assertEquals(15, response.path("id").asInt());
+        assertEquals("dameng", response.path("result").path("driver").asText());
+        assertEquals("#NSET2", response.path("result").path("root").path("node_type").asText());
+    }
+
+    @Test
+    void triggerMetadataDispatchesToMetadataClient() throws Exception {
+        RpcServer server = new RpcServer(new StubDamengClient());
+
+        var response = Json.MAPPER.readTree(server.handleLine("""
+                {"jsonrpc":"2.0","method":"get_triggers","params":{"params":{},"schema":"DEV2"},"id":16}
+                """));
+
+        assertEquals(16, response.path("id").asInt());
+        assertEquals("TRG_ORDERS_AUDIT", response.path("result").path(0).path("name").asText());
+        assertEquals("ORDERS", response.path("result").path(0).path("table_name").asText());
+    }
+
+    @Test
+    void triggerDefinitionDispatchesToMetadataClient() throws Exception {
+        RpcServer server = new RpcServer(new StubDamengClient());
+
+        var response = Json.MAPPER.readTree(server.handleLine("""
+                {"jsonrpc":"2.0","method":"get_trigger_definition","params":{"params":{},"schema":"DEV2","trigger_name":"TRG_ORDERS_AUDIT","table_name":"ORDERS"},"id":17}
+                """));
+
+        assertEquals(17, response.path("id").asInt());
+        assertTrue(response.path("result").asText().contains("TRG_ORDERS_AUDIT"));
+    }
+
+    @Test
     void jdbcMethodsFailClearlyBeforeInitialize() throws Exception {
         RpcServer server = new RpcServer(new DamengClient());
 
@@ -208,6 +246,33 @@ final class RpcServerTest {
             assertEquals("FUNCTION", routineType);
             assertEquals("DEV2", schema);
             return "FUNCTION FN_CUSTOMER_ORDER_COUNT(IN P_CUSTOMER_ID INT) RETURN INT";
+        }
+
+        @Override
+        com.fasterxml.jackson.databind.node.ObjectNode explainQuery(ConnectionParams params, String query, boolean analyze, String schema) {
+            assertEquals("SELECT * FROM ORDERS", query);
+            assertTrue(analyze);
+            assertEquals("DEV2", schema);
+            return ExplainParser.toExplainPlan("1   #NSET2: [1, 1, 10]", query);
+        }
+
+        @Override
+        List<Map<String, JsonNode>> getTriggers(ConnectionParams params, String schema) {
+            Map<String, JsonNode> trigger = new LinkedHashMap<>();
+            trigger.put("name", Json.NODES.textNode("TRG_ORDERS_AUDIT"));
+            trigger.put("table_name", Json.NODES.textNode("ORDERS"));
+            trigger.put("event", Json.NODES.textNode("UPDATE"));
+            trigger.put("timing", Json.NODES.textNode("AFTER"));
+            trigger.put("definition", Json.NODES.textNode("TRIGGER TRG_ORDERS_AUDIT AFTER UPDATE ON ORDERS"));
+            return List.of(trigger);
+        }
+
+        @Override
+        String getTriggerDefinition(ConnectionParams params, String triggerName, String tableName, String schema) {
+            assertEquals("TRG_ORDERS_AUDIT", triggerName);
+            assertEquals("ORDERS", tableName);
+            assertEquals("DEV2", schema);
+            return "TRIGGER TRG_ORDERS_AUDIT AFTER UPDATE ON ORDERS";
         }
     }
 }

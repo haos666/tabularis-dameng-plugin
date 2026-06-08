@@ -11,6 +11,7 @@ import java.sql.Connection;
 import java.sql.Driver;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Clob;
@@ -326,6 +327,80 @@ class DamengClient {
         }
     }
 
+    List<Map<String, JsonNode>> getTriggers(ConnectionParams params, String schema) throws SQLException {
+        try (Connection conn = connect(params)) {
+            String owner = resolveSchema(conn, schema);
+            try (PreparedStatement stmt = conn.prepareStatement("""
+                    SELECT TRIGGER_NAME, TABLE_NAME, TRIGGERING_EVENT, TRIGGERING_TYPE, DESCRIPTION, TRIGGER_BODY
+                    FROM ALL_TRIGGERS
+                    WHERE OWNER = ?
+                    ORDER BY TABLE_NAME, TRIGGER_NAME
+                    """)) {
+                stmt.setQueryTimeout(settings().queryTimeoutSec());
+                stmt.setString(1, owner);
+                try (ResultSet rs = stmt.executeQuery()) {
+                    List<Map<String, JsonNode>> triggers = new ArrayList<>();
+                    while (rs.next()) {
+                        String name = rs.getString("TRIGGER_NAME");
+                        String tableName = rs.getString("TABLE_NAME");
+                        String event = normalizeTriggerEvent(rs.getString("TRIGGERING_EVENT"));
+                        String timing = normalizeTriggerTiming(rs.getString("TRIGGERING_TYPE"));
+                        String definition = triggerDefinition(
+                                rs.getString("DESCRIPTION"),
+                                textValue(rs, "TRIGGER_BODY"),
+                                name,
+                                tableName,
+                                timing,
+                                event
+                        );
+
+                        Map<String, JsonNode> item = new LinkedHashMap<>();
+                        item.put("name", Json.NODES.textNode(name));
+                        item.put("table_name", Json.NODES.textNode(tableName));
+                        item.put("event", Json.NODES.textNode(event));
+                        item.put("timing", Json.NODES.textNode(timing));
+                        item.put("definition", definition == null || definition.isBlank()
+                                ? Json.NODES.nullNode()
+                                : Json.NODES.textNode(definition));
+                        triggers.add(item);
+                    }
+                    return triggers;
+                }
+            }
+        }
+    }
+
+    String getTriggerDefinition(ConnectionParams params, String triggerName, String tableName, String schema) throws SQLException {
+        try (Connection conn = connect(params)) {
+            String owner = resolveSchema(conn, schema);
+            try (PreparedStatement stmt = conn.prepareStatement("""
+                    SELECT TRIGGER_NAME, TABLE_NAME, TRIGGERING_EVENT, TRIGGERING_TYPE, DESCRIPTION, TRIGGER_BODY
+                    FROM ALL_TRIGGERS
+                    WHERE OWNER = ?
+                      AND TRIGGER_NAME = ?
+                      AND TABLE_NAME = ?
+                    """)) {
+                stmt.setQueryTimeout(settings().queryTimeoutSec());
+                stmt.setString(1, owner);
+                stmt.setString(2, normalizeIdentifier(triggerName));
+                stmt.setString(3, normalizeIdentifier(tableName));
+                try (ResultSet rs = stmt.executeQuery()) {
+                    if (rs.next()) {
+                        return triggerDefinition(
+                                rs.getString("DESCRIPTION"),
+                                textValue(rs, "TRIGGER_BODY"),
+                                rs.getString("TRIGGER_NAME"),
+                                rs.getString("TABLE_NAME"),
+                                normalizeTriggerTiming(rs.getString("TRIGGERING_TYPE")),
+                                normalizeTriggerEvent(rs.getString("TRIGGERING_EVENT"))
+                        );
+                    }
+                }
+            }
+            return triggerSignature(normalizeIdentifier(triggerName), normalizeIdentifier(tableName), "", "");
+        }
+    }
+
     ObjectNode executeQuery(ConnectionParams params, String query, Integer limit, int page) throws SQLException {
         SqlSafety.requireReadOnly(query);
         String finalQuery = limit == null ? query : QueryPaginator.paginated(query, limit, page);
@@ -344,6 +419,28 @@ class DamengClient {
             }
             try (ResultSet rs = stmt.getResultSet()) {
                 return ResultSetJson.toQueryResult(rs, limit, page);
+            }
+        }
+    }
+
+    ObjectNode explainQuery(ConnectionParams params, String query, boolean analyze, String schema) throws SQLException {
+        SqlSafety.requireReadOnly(query);
+        String explainSql = explainSql(query, analyze);
+        try (Connection conn = connect(params)) {
+            // DM materializes EXPLAIN FOR internally and rejects it when the JDBC connection is marked read-only.
+            conn.setReadOnly(false);
+            try (Statement stmt = conn.createStatement()) {
+                stmt.setQueryTimeout(settings().queryTimeoutSec());
+                try (ResultSet rs = stmt.executeQuery(explainSql)) {
+                    return readExplainPlan(rs, query);
+                } catch (SQLException e) {
+                    if (analyze) {
+                        try (ResultSet rs = stmt.executeQuery(explainSql(query, false))) {
+                            return readExplainPlan(rs, query);
+                        }
+                    }
+                    throw e;
+                }
             }
         }
     }
@@ -549,6 +646,59 @@ class DamengClient {
         return value == null || value.isBlank() ? Json.NODES.nullNode() : Json.NODES.textNode(value);
     }
 
+    static String normalizeTriggerEvent(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        return value.strip().toUpperCase(Locale.ROOT).replace('_', ' ');
+    }
+
+    static String normalizeTriggerTiming(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        String normalized = value.strip().toUpperCase(Locale.ROOT).replace('_', ' ');
+        if (normalized.contains("BEFORE")) {
+            return "BEFORE";
+        }
+        if (normalized.contains("AFTER")) {
+            return "AFTER";
+        }
+        if (normalized.contains("INSTEAD")) {
+            return "INSTEAD OF";
+        }
+        return normalized;
+    }
+
+    static String triggerDefinition(String description, String body, String name, String tableName, String timing, String event) {
+        String cleanDescription = description == null ? "" : description.strip();
+        String cleanBody = body == null ? "" : body.strip();
+        if (!cleanDescription.isBlank() && !cleanBody.isBlank()) {
+            return cleanDescription + "\n" + cleanBody;
+        }
+        if (!cleanBody.isBlank()) {
+            return cleanBody;
+        }
+        if (!cleanDescription.isBlank()) {
+            return cleanDescription;
+        }
+        return triggerSignature(name, tableName, timing, event);
+    }
+
+    static String triggerSignature(String name, String tableName, String timing, String event) {
+        StringBuilder signature = new StringBuilder("TRIGGER ").append(name);
+        if (timing != null && !timing.isBlank()) {
+            signature.append(' ').append(timing);
+        }
+        if (event != null && !event.isBlank()) {
+            signature.append(' ').append(event);
+        }
+        if (tableName != null && !tableName.isBlank()) {
+            signature.append(" ON ").append(tableName);
+        }
+        return signature.toString();
+    }
+
     static String normalizeForeignKeyAction(String value) {
         if (value == null || value.isBlank()) {
             return null;
@@ -628,6 +778,64 @@ class DamengClient {
             return clob.getSubString(1, Math.toIntExact(Math.min(length, Integer.MAX_VALUE)));
         }
         return rs.getString(column);
+    }
+
+    private static String explainSql(String query, boolean analyze) {
+        String trimmed = query.strip();
+        if (trimmed.regionMatches(true, 0, "EXPLAIN FOR", 0, "EXPLAIN FOR".length())) {
+            return trimmed;
+        }
+        if (trimmed.regionMatches(true, 0, "EXPLAIN", 0, "EXPLAIN".length())) {
+            trimmed = trimmed.substring("EXPLAIN".length()).strip();
+        }
+        if (analyze) {
+            return "EXPLAIN ANALYZE FOR " + trimmed;
+        }
+        return "EXPLAIN FOR " + trimmed;
+    }
+
+    private static ObjectNode readExplainPlan(ResultSet rs, String originalQuery) throws SQLException {
+        ResultSetMetaData meta = rs.getMetaData();
+        int columnCount = meta.getColumnCount();
+        List<String> columns = new ArrayList<>();
+        boolean hasPlanColumns = false;
+        for (int i = 1; i <= columnCount; i++) {
+            String column = meta.getColumnLabel(i);
+            if (column == null || column.isBlank()) {
+                column = meta.getColumnName(i);
+            }
+            column = column.toUpperCase(Locale.ROOT);
+            columns.add(column);
+            if ("OPERATION".equals(column) || "LEVEL_ID".equals(column)) {
+                hasPlanColumns = true;
+            }
+        }
+
+        if (!hasPlanColumns) {
+            return ExplainParser.toExplainPlan(readExplainOutput(rs), originalQuery);
+        }
+
+        List<Map<String, String>> rows = new ArrayList<>();
+        while (rs.next()) {
+            Map<String, String> row = new LinkedHashMap<>();
+            for (int i = 1; i <= columnCount; i++) {
+                Object value = rs.getObject(i);
+                row.put(columns.get(i - 1), value == null ? null : value.toString());
+            }
+            rows.add(row);
+        }
+        return ExplainParser.toExplainPlan(rows, null, originalQuery);
+    }
+
+    private static String readExplainOutput(ResultSet rs) throws SQLException {
+        StringBuilder output = new StringBuilder();
+        while (rs.next()) {
+            if (!output.isEmpty()) {
+                output.append(System.lineSeparator());
+            }
+            output.append(rs.getString(1));
+        }
+        return output.toString();
     }
 
     private static String nodeText(JsonNode node) {
