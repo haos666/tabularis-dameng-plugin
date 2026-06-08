@@ -1,6 +1,6 @@
-# Tabularis 达梦插件
+# Tabularis DM 插件
 
-[Tabularis](https://github.com/TabularisDB/tabularis) 的只读 [达梦数据库](https://www.dameng.com/) 驱动插件。
+[Tabularis](https://github.com/TabularisDB/tabularis) 的只读 [DM / 达梦数据库](https://www.dameng.com/) 驱动插件。
 
 插件是一个独立 Java 进程，通过 stdin/stdout 上的 JSON-RPC 2.0 与 Tabularis 通信。插件运行时从用户配置的本地路径加载官方达梦 JDBC 驱动。本仓库和发布产物都不会分发达梦 JDBC 二进制文件。
 
@@ -10,11 +10,15 @@
 
 - 通过用户本地提供的 JDBC jar 连接达梦
 - 列出 schema、表、列
+- 列出索引和外键
+- 列出视图、查看视图定义、加载视图列
+- 批量返回列和外键元数据，加快 Tabularis 浏览
+- 返回 schema 快照，支持 Tabularis ER 图
 - 执行只读 SQL 查询
 - 返回 Tabularis 兼容的结果集
 - 拒绝写入、CRUD 和 DDL 操作
 
-这是第一个 MVP 版本。索引、外键、视图、存储过程、写操作、DDL 和 UI 扩展暂不实现。
+插件仍然保持只读。存储过程、触发器、写操作、DDL、表结构管理、视图管理和 UI 扩展暂不实现。
 
 ## 环境要求
 
@@ -39,7 +43,7 @@ chmod +x dameng-plugin
 构建产物位置：
 
 ```text
-target/tabularis-dameng-plugin-0.1.1.jar
+target/tabularis-dameng-plugin-0.2.0.jar
 ```
 
 ## 本地安装
@@ -57,7 +61,7 @@ PLUGIN_DIR="$HOME/Library/Application Support/com.debba.tabularis/plugins/dameng
 
 mkdir -p "$PLUGIN_DIR/target"
 cp manifest.json dameng-plugin dameng-plugin.bat "$PLUGIN_DIR/"
-cp target/tabularis-dameng-plugin-0.1.1.jar "$PLUGIN_DIR/target/"
+cp target/tabularis-dameng-plugin-0.2.0.jar "$PLUGIN_DIR/target/"
 chmod +x "$PLUGIN_DIR/dameng-plugin"
 ```
 
@@ -104,17 +108,24 @@ schema 由 Tabularis 单独选择和传递。
 - `initialize` 使用 `URLClassLoader` 加载 `dm.jdbc.driver.DmDriver`。
 - `execute_query` 只允许 `SELECT`、`WITH`、`EXPLAIN` 开头的 SQL。
 - `get_databases` 返回可见 schema，方便 Tabularis 连接窗口中的“加载数据库”按钮有可选值。
-- `get_schema_snapshot` MVP 阶段返回空数组，以兼容当前 Tabularis 运行时模型。
+- `get_schema_snapshot` 返回表、列和外键，供 Tabularis ER 图使用。
+- `get_views`、`get_view_definition`、`get_view_columns` 只做只读查看。
 
 ## 发布包内容
 
-发布产物应包含：
+发布产物命名示例：
+
+```text
+tabularis-dameng-plugin-0.2.0.zip
+```
+
+zip 应包含：
 
 ```text
 dameng-plugin
 dameng-plugin.bat
 manifest.json
-target/tabularis-dameng-plugin-0.1.1.jar
+target/tabularis-dameng-plugin-0.2.0.jar
 ```
 
 不要包含：

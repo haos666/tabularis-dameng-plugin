@@ -2,6 +2,13 @@ package dev.tabularis.dameng;
 
 import org.junit.jupiter.api.Test;
 
+import com.fasterxml.jackson.databind.JsonNode;
+
+import java.sql.SQLException;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -17,27 +24,54 @@ final class RpcServerTest {
     }
 
     @Test
-    void schemaSnapshotReturnsRuntimeCompatibleArray() throws Exception {
-        RpcServer server = new RpcServer(new DamengClient());
+    void schemaSnapshotDispatchesToMetadataClient() throws Exception {
+        RpcServer server = new RpcServer(new StubDamengClient());
 
         var response = Json.MAPPER.readTree(server.handleLine("""
-                {"jsonrpc":"2.0","method":"get_schema_snapshot","params":{},"id":7}
+                {"jsonrpc":"2.0","method":"get_schema_snapshot","params":{"params":{},"schema":"DEV2"},"id":7}
                 """));
 
         assertEquals(7, response.path("id").asInt());
         assertTrue(response.path("result").isArray());
+        assertEquals("CUSTOMERS", response.path("result").path(0).path("name").asText());
     }
 
     @Test
-    void batchMetadataMethodsReturnRuntimeCompatibleObjects() throws Exception {
-        RpcServer server = new RpcServer(new DamengClient());
+    void batchMetadataDispatchesToMetadataClient() throws Exception {
+        RpcServer server = new RpcServer(new StubDamengClient());
 
         var response = Json.MAPPER.readTree(server.handleLine("""
-                {"jsonrpc":"2.0","method":"get_all_foreign_keys_batch","params":{},"id":8}
+                {"jsonrpc":"2.0","method":"get_all_foreign_keys_batch","params":{"params":{},"schema":"DEV2"},"id":8}
                 """));
 
         assertEquals(8, response.path("id").asInt());
         assertTrue(response.path("result").isObject());
+        assertEquals("FK_ORDERS_CUSTOMER", response.path("result").path("ORDERS").path(0).path("name").asText());
+    }
+
+    @Test
+    void viewDefinitionUsesViewNameParameter() throws Exception {
+        RpcServer server = new RpcServer(new StubDamengClient());
+
+        var response = Json.MAPPER.readTree(server.handleLine("""
+                {"jsonrpc":"2.0","method":"get_view_definition","params":{"params":{},"schema":"DEV2","view_name":"\\"V_ORDER_SUMMARY\\""},"id":10}
+                """));
+
+        assertEquals(10, response.path("id").asInt());
+        assertEquals("SELECT * FROM ORDERS", response.path("result").asText());
+    }
+
+    @Test
+    void indexMetadataDispatchesToMetadataClient() throws Exception {
+        RpcServer server = new RpcServer(new StubDamengClient());
+
+        var response = Json.MAPPER.readTree(server.handleLine("""
+                {"jsonrpc":"2.0","method":"get_indexes","params":{"params":{},"schema":"DEV2","table":"ORDERS"},"id":11}
+                """));
+
+        assertEquals(11, response.path("id").asInt());
+        assertEquals("IDX_ORDERS_CUSTOMER", response.path("result").path(0).path("name").asText());
+        assertEquals("CUSTOMER_ID", response.path("result").path(0).path("column_name").asText());
     }
 
     @Test
@@ -50,5 +84,52 @@ final class RpcServerTest {
 
         assertEquals(-32602, response.path("error").path("code").asInt());
         assertTrue(response.path("error").path("message").asText().contains("not initialized"));
+    }
+
+    private static final class StubDamengClient extends DamengClient {
+        @Override
+        com.fasterxml.jackson.databind.node.ArrayNode getSchemaSnapshot(ConnectionParams params, String schema) {
+            var snapshot = Json.NODES.arrayNode();
+            var table = Json.NODES.objectNode();
+            table.put("name", "CUSTOMERS");
+            table.set("columns", Json.NODES.arrayNode());
+            table.set("foreign_keys", Json.NODES.arrayNode());
+            snapshot.add(table);
+            return snapshot;
+        }
+
+        @Override
+        com.fasterxml.jackson.databind.node.ObjectNode getAllForeignKeysBatch(ConnectionParams params, String schema) {
+            var result = Json.NODES.objectNode();
+            var keys = Json.NODES.arrayNode();
+            var key = Json.NODES.objectNode();
+            key.put("name", "FK_ORDERS_CUSTOMER");
+            key.put("column_name", "CUSTOMER_ID");
+            key.put("ref_table", "CUSTOMERS");
+            key.put("ref_column", "ID");
+            key.set("on_delete", Json.NODES.nullNode());
+            key.set("on_update", Json.NODES.nullNode());
+            keys.add(key);
+            result.set("ORDERS", keys);
+            return result;
+        }
+
+        @Override
+        String getViewDefinition(ConnectionParams params, String view, String schema) throws SQLException {
+            assertEquals("\"V_ORDER_SUMMARY\"", view);
+            assertEquals("DEV2", schema);
+            return "SELECT * FROM ORDERS";
+        }
+
+        @Override
+        List<Map<String, JsonNode>> getIndexes(ConnectionParams params, String table, String schema) {
+            Map<String, JsonNode> index = new LinkedHashMap<>();
+            index.put("name", Json.NODES.textNode("IDX_ORDERS_CUSTOMER"));
+            index.put("column_name", Json.NODES.textNode("CUSTOMER_ID"));
+            index.put("is_unique", Json.NODES.booleanNode(false));
+            index.put("is_primary", Json.NODES.booleanNode(false));
+            index.put("seq_in_index", Json.NODES.numberNode(1));
+            return List.of(index);
+        }
     }
 }

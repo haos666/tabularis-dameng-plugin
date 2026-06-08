@@ -1,6 +1,6 @@
-# Tabularis Dameng Plugin
+# Tabularis DM Plugin
 
-Read-only [Dameng](https://www.dameng.com/) database driver plugin for [Tabularis](https://github.com/TabularisDB/tabularis).
+Read-only [DM / Dameng](https://www.dameng.com/) database driver plugin for [Tabularis](https://github.com/TabularisDB/tabularis).
 
 This plugin runs as a standalone Java process and talks to Tabularis through JSON-RPC 2.0 over stdin/stdout. It loads the official Dameng JDBC driver from a local path configured by the user. Dameng JDBC binaries are not redistributed in this repository or in release artifacts.
 
@@ -10,11 +10,15 @@ This plugin runs as a standalone Java process and talks to Tabularis through JSO
 
 - Connect to Dameng through a user-provided JDBC driver jar
 - List schemas, tables, and columns
+- List indexes and foreign keys
+- List views, inspect view definitions, and load view columns
+- Return batch column and foreign key metadata for faster browsing
+- Return schema snapshots for Tabularis ER diagrams
 - Execute read-only SQL queries
 - Return Tabularis-compatible result sets
 - Refuse write, CRUD, and DDL operations
 
-This is an MVP driver. Indexes, foreign keys, views, routines, write operations, DDL, and UI extensions are intentionally out of scope for the first release.
+This is still a read-only driver. Routines, triggers, write operations, DDL, table management, view management, and UI extensions are intentionally out of scope.
 
 ## Requirements
 
@@ -39,7 +43,7 @@ chmod +x dameng-plugin
 The executable jar is written to:
 
 ```text
-target/tabularis-dameng-plugin-0.1.1.jar
+target/tabularis-dameng-plugin-0.2.0.jar
 ```
 
 ## Install Locally
@@ -57,7 +61,7 @@ PLUGIN_DIR="$HOME/Library/Application Support/com.debba.tabularis/plugins/dameng
 
 mkdir -p "$PLUGIN_DIR/target"
 cp manifest.json dameng-plugin dameng-plugin.bat "$PLUGIN_DIR/"
-cp target/tabularis-dameng-plugin-0.1.1.jar "$PLUGIN_DIR/target/"
+cp target/tabularis-dameng-plugin-0.2.0.jar "$PLUGIN_DIR/target/"
 chmod +x "$PLUGIN_DIR/dameng-plugin"
 ```
 
@@ -104,17 +108,24 @@ Schema selection is handled separately through Tabularis.
 - `initialize` loads `dm.jdbc.driver.DmDriver` through `URLClassLoader`.
 - `execute_query` only accepts SQL starting with `SELECT`, `WITH`, or `EXPLAIN`.
 - `get_databases` returns visible schemas so the Tabularis connection dialog has a useful value for "Load Databases".
-- `get_schema_snapshot` currently returns an empty array for MVP compatibility with Tabularis' runtime model.
+- `get_schema_snapshot` returns tables, columns, and foreign keys for Tabularis ER diagrams.
+- `get_views`, `get_view_definition`, and `get_view_columns` are read-only inspection helpers.
 
 ## Release Packaging
 
-Release artifacts should include:
+Release artifacts are named like:
+
+```text
+tabularis-dameng-plugin-0.2.0.zip
+```
+
+The zip should include:
 
 ```text
 dameng-plugin
 dameng-plugin.bat
 manifest.json
-target/tabularis-dameng-plugin-0.1.1.jar
+target/tabularis-dameng-plugin-0.2.0.jar
 ```
 
 Do not include:

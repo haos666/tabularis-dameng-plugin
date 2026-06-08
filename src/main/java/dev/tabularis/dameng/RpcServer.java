@@ -61,15 +61,29 @@ final class RpcServer {
             case "get_schemas" -> arrayOfStrings(client.getSchemas(connectionParams(params)));
             case "get_tables" -> tables(client.getTables(connectionParams(params), text(params.path("schema"))));
             case "get_columns" -> columns(client.getColumns(connectionParams(params), requiredText(params, "table"), text(params.path("schema"))));
+            case "get_indexes" -> columns(client.getIndexes(connectionParams(params), requiredText(params, "table"), text(params.path("schema"))));
+            case "get_foreign_keys" -> columns(client.getForeignKeys(connectionParams(params), requiredText(params, "table"), text(params.path("schema"))));
+            case "get_views" -> columns(client.getViews(connectionParams(params), text(params.path("schema"))));
+            case "get_view_definition" -> Json.NODES.textNode(client.getViewDefinition(
+                    connectionParams(params),
+                    requiredText(params, "view_name"),
+                    text(params.path("schema"))
+            ));
+            case "get_view_columns" -> columns(client.getViewColumns(
+                    connectionParams(params),
+                    requiredText(params, "view_name"),
+                    text(params.path("schema"))
+            ));
+            case "get_all_columns_batch" -> client.getAllColumnsBatch(connectionParams(params), text(params.path("schema")));
+            case "get_all_foreign_keys_batch" -> client.getAllForeignKeysBatch(connectionParams(params), text(params.path("schema")));
+            case "get_schema_snapshot" -> client.getSchemaSnapshot(connectionParams(params), text(params.path("schema")));
             case "execute_query" -> client.executeQuery(
                     connectionParams(params),
                     requiredText(params, "query"),
                     optionalInt(params.path("limit")),
                     intValue(params.path("page"), 1)
             );
-            case "get_indexes", "get_foreign_keys", "get_views", "get_view_columns",
-                    "get_routines", "get_routine_parameters", "get_schema_snapshot" -> Json.NODES.arrayNode();
-            case "get_all_columns_batch", "get_all_foreign_keys_batch" -> Json.NODES.objectNode();
+            case "get_routines", "get_routine_parameters" -> Json.NODES.arrayNode();
             case "insert_record", "update_record", "delete_record",
                     "get_create_table_sql", "get_add_column_sql", "get_alter_column_sql",
                     "get_create_index_sql", "get_create_foreign_key_sql",
