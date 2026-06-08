@@ -1,0 +1,20 @@
+# Build outputs
+build/
+out/
+target/
+.gradle/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Local JDBC driver files
+lib/*.jar
+jdbc/*.jar
+DmJdbcDriver*.jar
+
+# Logs and temp files
+*.log
+*.tmp
+.DSStore
