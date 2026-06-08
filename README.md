@@ -1,34 +1,146 @@
-# tabularis-dameng-plugin
+# Tabularis Dameng Plugin
 
-Tabularis plugin for Dameng database.
+Read-only [Dameng](https://www.dameng.com/) database driver plugin for [Tabularis](https://github.com/TabularisDB/tabularis).
 
-This project implements a Tabularis external database driver that talks to the host application over JSON-RPC 2.0 via stdin/stdout. The plugin uses the official Dameng JDBC driver at runtime, but does not redistribute Dameng JDBC driver binaries.
+This plugin runs as a standalone Java process and talks to Tabularis through JSON-RPC 2.0 over stdin/stdout. It loads the official Dameng JDBC driver from a local path configured by the user. Dameng JDBC binaries are not redistributed in this repository or in release artifacts.
 
-## Status
+[中文文档](./README.zh-CN.md)
 
-Early project scaffold. The first milestone is a read-only driver:
+## Features
 
-- connect to Dameng through JDBC
-- list schemas, tables, columns, indexes, and views
-- execute SQL queries
-- return Tabularis-compatible result sets
+- Connect to Dameng through a user-provided JDBC driver jar
+- List schemas, tables, and columns
+- Execute read-only SQL queries
+- Return Tabularis-compatible result sets
+- Refuse write, CRUD, and DDL operations
 
-Write operations and DDL support will be added only after the read-only path is stable.
+This is an MVP driver. Indexes, foreign keys, views, routines, write operations, DDL, and UI extensions are intentionally out of scope for the first release.
 
-## JDBC Driver
+## Requirements
 
-This repository does not include `DmJdbcDriver*.jar`.
+- Java 17 or newer
+- Maven 3.9+ for building from source
+- Tabularis with external plugin support
+- A local Dameng JDBC driver jar
 
-Users must obtain the Dameng JDBC driver from official Dameng channels or Maven Central, then configure the local driver path for the plugin.
+Download Dameng database/JDBC packages from the official Dameng download page:
 
-Suggested local layout:
+https://www.dameng.com/download/index.html
 
-```text
-lib/
-└── DmJdbcDriver8.jar
+For modern local development, `DmJdbcDriver8.jar` is the recommended default. If you run into compatibility issues on JDK 21, try `DmJdbcDriver11.jar`.
+
+## Build
+
+```bash
+mvn clean package
+chmod +x dameng-plugin
 ```
 
-The `lib/*.jar` files are intentionally ignored by Git.
+The executable jar is written to:
+
+```text
+target/tabularis-dameng-plugin-0.1.0.jar
+```
+
+## Install Locally
+
+Tabularis currently stores user-installed plugins under:
+
+```text
+~/Library/Application Support/com.debba.tabularis/plugins/
+```
+
+Install this plugin on macOS:
+
+```bash
+PLUGIN_DIR="$HOME/Library/Application Support/com.debba.tabularis/plugins/dameng"
+
+mkdir -p "$PLUGIN_DIR/target"
+cp manifest.json dameng-plugin dameng-plugin.bat "$PLUGIN_DIR/"
+cp target/tabularis-dameng-plugin-0.1.0.jar "$PLUGIN_DIR/target/"
+chmod +x "$PLUGIN_DIR/dameng-plugin"
+```
+
+Place the JDBC jar in a stable local path, for example:
+
+```bash
+mkdir -p "$HOME/Library/Application Support/com.debba.tabularis/jdbc"
+cp /path/to/DmJdbcDriver8.jar \
+  "$HOME/Library/Application Support/com.debba.tabularis/jdbc/"
+```
+
+Restart Tabularis after installing or replacing the plugin.
+
+## Configure in Tabularis
+
+Open `Settings -> Plugins -> Dameng`, then set:
+
+```text
+jdbc_driver_path=/Users/<you>/Library/Application Support/com.debba.tabularis/jdbc/DmJdbcDriver8.jar
+```
+
+Create a Dameng connection:
+
+```text
+host=127.0.0.1
+port=5236
+database=<leave empty, or select a loaded schema if Tabularis asks>
+username=SYSDBA
+password=<your password>
+```
+
+Dameng does not require a database name in the JDBC URL. The plugin uses:
+
+```text
+jdbc:dm://host:port
+```
+
+Schema selection is handled separately through Tabularis.
+
+## Development Notes
+
+- stdout is reserved for JSON-RPC responses only.
+- logs and diagnostics go to stderr.
+- `initialize` loads `dm.jdbc.driver.DmDriver` through `URLClassLoader`.
+- `execute_query` only accepts SQL starting with `SELECT`, `WITH`, or `EXPLAIN`.
+- `get_databases` returns visible schemas so the Tabularis connection dialog has a useful value for "Load Databases".
+- `get_schema_snapshot` currently returns an empty array for MVP compatibility with Tabularis' runtime model.
+
+## Release Packaging
+
+Release artifacts should include:
+
+```text
+dameng-plugin
+dameng-plugin.bat
+manifest.json
+target/tabularis-dameng-plugin-0.1.0.jar
+```
+
+Do not include:
+
+```text
+DmJdbcDriver*.jar
+jdbc-*.zip
+```
+
+## Troubleshooting
+
+If the driver does not appear in Tabularis, restart Tabularis after copying the plugin directory.
+
+If connection succeeds with `SYSDBA` but fails with another user, confirm the user exists in the current Dameng instance:
+
+```sql
+SELECT USERNAME, ACCOUNT_STATUS FROM DBA_USERS ORDER BY USERNAME;
+```
+
+If "Load Databases" returns nothing, test the plugin directly:
+
+```bash
+"$HOME/Library/Application Support/com.debba.tabularis/plugins/dameng/dameng-plugin"
+```
+
+Then send JSON-RPC lines to stdin.
 
 ## License
 

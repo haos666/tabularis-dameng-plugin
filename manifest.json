@@ -1,0 +1,64 @@
+{
+  "$schema": "https://tabularis.dev/schemas/plugin-manifest.json",
+  "id": "dameng",
+  "name": "Dameng",
+  "version": "0.1.0",
+  "description": "Read-only Dameng database driver using a user-provided JDBC jar.",
+  "default_port": 5236,
+  "default_username": "SYSDBA",
+  "executable": "dameng-plugin",
+  "color": "#0f766e",
+  "icon": "database",
+  "capabilities": {
+    "schemas": true,
+    "views": false,
+    "routines": false,
+    "file_based": false,
+    "folder_based": false,
+    "connection_string": true,
+    "connection_string_example": "jdbc:dm://localhost:5236",
+    "identifier_quote": "\"",
+    "alter_primary_key": false,
+    "manage_tables": false,
+    "readonly": true,
+    "sql_dialect": "oracle"
+  },
+  "settings": [
+    {
+      "key": "jdbc_driver_path",
+      "label": "Dameng JDBC Driver Path",
+      "type": "string",
+      "required": true,
+      "description": "Absolute path to a local DmJdbcDriver jar, for example /path/to/DmJdbcDriver8.jar."
+    },
+    {
+      "key": "connect_timeout_ms",
+      "label": "Connect Timeout (ms)",
+      "type": "number",
+      "default": 10000,
+      "description": "Connection timeout passed to the Dameng JDBC driver."
+    },
+    {
+      "key": "query_timeout_sec",
+      "label": "Query Timeout (sec)",
+      "type": "number",
+      "default": 60,
+      "description": "Maximum time a statement may run before JDBC cancels it."
+    }
+  ],
+  "data_types": [
+    { "name": "INT", "category": "numeric", "requires_length": false, "requires_precision": false },
+    { "name": "BIGINT", "category": "numeric", "requires_length": false, "requires_precision": false },
+    { "name": "DECIMAL", "category": "numeric", "requires_length": false, "requires_precision": true },
+    { "name": "NUMBER", "category": "numeric", "requires_length": false, "requires_precision": true },
+    { "name": "VARCHAR", "category": "string", "requires_length": true, "requires_precision": false, "default_length": "255" },
+    { "name": "CHAR", "category": "string", "requires_length": true, "requires_precision": false, "default_length": "1" },
+    { "name": "TEXT", "category": "string", "requires_length": false, "requires_precision": false },
+    { "name": "DATE", "category": "date", "requires_length": false, "requires_precision": false },
+    { "name": "TIME", "category": "date", "requires_length": false, "requires_precision": false },
+    { "name": "TIMESTAMP", "category": "date", "requires_length": false, "requires_precision": false },
+    { "name": "BLOB", "category": "binary", "requires_length": false, "requires_precision": false },
+    { "name": "CLOB", "category": "string", "requires_length": false, "requires_precision": false },
+    { "name": "BOOLEAN", "category": "other", "requires_length": false, "requires_precision": false }
+  ]
+}
