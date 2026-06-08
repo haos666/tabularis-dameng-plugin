@@ -44,7 +44,7 @@ chmod +x dameng-plugin
 The executable jar is written to:
 
 ```text
-target/tabularis-dameng-plugin-0.3.0.jar
+target/tabularis-dameng-plugin-0.3.1.jar
 ```
 
 ## Install Locally
@@ -62,7 +62,7 @@ PLUGIN_DIR="$HOME/Library/Application Support/com.debba.tabularis/plugins/dameng
 
 mkdir -p "$PLUGIN_DIR/target"
 cp manifest.json dameng-plugin dameng-plugin.bat "$PLUGIN_DIR/"
-cp target/tabularis-dameng-plugin-0.3.0.jar "$PLUGIN_DIR/target/"
+cp target/tabularis-dameng-plugin-0.3.1.jar "$PLUGIN_DIR/target/"
 chmod +x "$PLUGIN_DIR/dameng-plugin"
 ```
 
@@ -133,7 +133,7 @@ The reusable setup script is available at `docs/demo-schema.sql`.
 Release artifacts are named like:
 
 ```text
-tabularis-dameng-plugin-0.3.0.zip
+tabularis-dameng-plugin-0.3.1.zip
 ```
 
 The zip should include:
@@ -142,7 +142,7 @@ The zip should include:
 dameng-plugin
 dameng-plugin.bat
 manifest.json
-target/tabularis-dameng-plugin-0.3.0.jar
+target/tabularis-dameng-plugin-0.3.1.jar
 ```
 
 Do not include:

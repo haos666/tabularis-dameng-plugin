@@ -314,6 +314,18 @@ class DamengClient {
         }
     }
 
+    String getRoutineDefinition(ConnectionParams params, String routineName, String routineType, String schema) throws SQLException {
+        try (Connection conn = connect(params)) {
+            String owner = resolveSchema(conn, schema);
+            String name = normalizeIdentifier(routineName);
+            String definition = getRoutineDefinitions(conn, owner).get(name);
+            if (definition != null && !definition.isBlank()) {
+                return definition;
+            }
+            return routineSignature(routineType, name, getRoutineParameters(conn, owner, name));
+        }
+    }
+
     ObjectNode executeQuery(ConnectionParams params, String query, Integer limit, int page) throws SQLException {
         SqlSafety.requireReadOnly(query);
         String finalQuery = limit == null ? query : QueryPaginator.paginated(query, limit, page);

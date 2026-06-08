@@ -104,6 +104,18 @@ final class RpcServerTest {
     }
 
     @Test
+    void routineDefinitionDispatchesToMetadataClient() throws Exception {
+        RpcServer server = new RpcServer(new StubDamengClient());
+
+        var response = Json.MAPPER.readTree(server.handleLine("""
+                {"jsonrpc":"2.0","method":"get_routine_definition","params":{"params":{},"schema":"DEV2","routine_name":"FN_CUSTOMER_ORDER_COUNT","routine_type":"FUNCTION"},"id":14}
+                """));
+
+        assertEquals(14, response.path("id").asInt());
+        assertEquals("FUNCTION FN_CUSTOMER_ORDER_COUNT(IN P_CUSTOMER_ID INT) RETURN INT", response.path("result").asText());
+    }
+
+    @Test
     void jdbcMethodsFailClearlyBeforeInitialize() throws Exception {
         RpcServer server = new RpcServer(new DamengClient());
 
@@ -188,6 +200,14 @@ final class RpcServerTest {
             customerId.put("ordinal_position", Json.NODES.numberNode(1));
 
             return List.of(returnValue, customerId);
+        }
+
+        @Override
+        String getRoutineDefinition(ConnectionParams params, String routineName, String routineType, String schema) {
+            assertEquals("FN_CUSTOMER_ORDER_COUNT", routineName);
+            assertEquals("FUNCTION", routineType);
+            assertEquals("DEV2", schema);
+            return "FUNCTION FN_CUSTOMER_ORDER_COUNT(IN P_CUSTOMER_ID INT) RETURN INT";
         }
     }
 }

@@ -80,6 +80,12 @@ final class RpcServer {
                     requiredText(params, "routine_name"),
                     text(params.path("schema"))
             ));
+            case "get_routine_definition" -> Json.NODES.textNode(client.getRoutineDefinition(
+                    connectionParams(params),
+                    requiredText(params, "routine_name"),
+                    text(params.path("routine_type")),
+                    text(params.path("schema"))
+            ));
             case "get_all_columns_batch" -> client.getAllColumnsBatch(connectionParams(params), text(params.path("schema")));
             case "get_all_foreign_keys_batch" -> client.getAllForeignKeysBatch(connectionParams(params), text(params.path("schema")));
             case "get_schema_snapshot" -> client.getSchemaSnapshot(connectionParams(params), text(params.path("schema")));

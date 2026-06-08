@@ -44,7 +44,7 @@ chmod +x dameng-plugin
 构建产物位置：
 
 ```text
-target/tabularis-dameng-plugin-0.3.0.jar
+target/tabularis-dameng-plugin-0.3.1.jar
 ```
 
 ## 本地安装
@@ -62,7 +62,7 @@ PLUGIN_DIR="$HOME/Library/Application Support/com.debba.tabularis/plugins/dameng
 
 mkdir -p "$PLUGIN_DIR/target"
 cp manifest.json dameng-plugin dameng-plugin.bat "$PLUGIN_DIR/"
-cp target/tabularis-dameng-plugin-0.3.0.jar "$PLUGIN_DIR/target/"
+cp target/tabularis-dameng-plugin-0.3.1.jar "$PLUGIN_DIR/target/"
 chmod +x "$PLUGIN_DIR/dameng-plugin"
 ```
 
@@ -133,7 +133,7 @@ schema 由 Tabularis 单独选择和传递。
 发布产物命名示例：
 
 ```text
-tabularis-dameng-plugin-0.3.0.zip
+tabularis-dameng-plugin-0.3.1.zip
 ```
 
 zip 应包含：
@@ -142,7 +142,7 @@ zip 应包含：
 dameng-plugin
 dameng-plugin.bat
 manifest.json
-target/tabularis-dameng-plugin-0.3.0.jar
+target/tabularis-dameng-plugin-0.3.1.jar
 ```
 
 不要包含：
