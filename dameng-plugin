@@ -2,4 +2,4 @@
 set -eu
 
 DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
-exec java -jar "$DIR/target/tabularis-dameng-plugin-0.1.0.jar"
+exec java -jar "$DIR/target/tabularis-dameng-plugin-0.1.1.jar"

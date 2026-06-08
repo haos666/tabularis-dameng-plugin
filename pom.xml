@@ -6,7 +6,7 @@
 
     <groupId>dev.tabularis</groupId>
     <artifactId>tabularis-dameng-plugin</artifactId>
-    <version>0.1.0</version>
+    <version>0.1.1</version>
     <name>Tabularis Dameng Plugin</name>
     <description>Read-only Dameng database driver plugin for Tabularis.</description>
 

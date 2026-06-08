@@ -39,7 +39,7 @@ chmod +x dameng-plugin
 构建产物位置：
 
 ```text
-target/tabularis-dameng-plugin-0.1.0.jar
+target/tabularis-dameng-plugin-0.1.1.jar
 ```
 
 ## 本地安装
@@ -57,7 +57,7 @@ PLUGIN_DIR="$HOME/Library/Application Support/com.debba.tabularis/plugins/dameng
 
 mkdir -p "$PLUGIN_DIR/target"
 cp manifest.json dameng-plugin dameng-plugin.bat "$PLUGIN_DIR/"
-cp target/tabularis-dameng-plugin-0.1.0.jar "$PLUGIN_DIR/target/"
+cp target/tabularis-dameng-plugin-0.1.1.jar "$PLUGIN_DIR/target/"
 chmod +x "$PLUGIN_DIR/dameng-plugin"
 ```
 
@@ -73,7 +73,7 @@ cp /path/to/DmJdbcDriver8.jar \
 
 ## 在 Tabularis 中配置
 
-打开 `Settings -> Plugins -> Dameng`，设置：
+打开 `Settings -> Plugins -> DM`，设置：
 
 ```text
 jdbc_driver_path=/Users/<you>/Library/Application Support/com.debba.tabularis/jdbc/DmJdbcDriver8.jar
@@ -114,7 +114,7 @@ schema 由 Tabularis 单独选择和传递。
 dameng-plugin
 dameng-plugin.bat
 manifest.json
-target/tabularis-dameng-plugin-0.1.0.jar
+target/tabularis-dameng-plugin-0.1.1.jar
 ```
 
 不要包含：
@@ -126,7 +126,7 @@ jdbc-*.zip
 
 ## 排查问题
 
-如果 Tabularis 中看不到 Dameng 插件，请复制插件目录后重启 Tabularis。
+如果 Tabularis 中看不到 DM 插件，请复制插件目录后重启 Tabularis。
 
 如果 `SYSDBA` 能连接，但其他用户不能连接，请确认该用户存在于当前达梦实例：
 

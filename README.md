@@ -39,7 +39,7 @@ chmod +x dameng-plugin
 The executable jar is written to:
 
 ```text
-target/tabularis-dameng-plugin-0.1.0.jar
+target/tabularis-dameng-plugin-0.1.1.jar
 ```
 
 ## Install Locally
@@ -57,7 +57,7 @@ PLUGIN_DIR="$HOME/Library/Application Support/com.debba.tabularis/plugins/dameng
 
 mkdir -p "$PLUGIN_DIR/target"
 cp manifest.json dameng-plugin dameng-plugin.bat "$PLUGIN_DIR/"
-cp target/tabularis-dameng-plugin-0.1.0.jar "$PLUGIN_DIR/target/"
+cp target/tabularis-dameng-plugin-0.1.1.jar "$PLUGIN_DIR/target/"
 chmod +x "$PLUGIN_DIR/dameng-plugin"
 ```
 
@@ -73,7 +73,7 @@ Restart Tabularis after installing or replacing the plugin.
 
 ## Configure in Tabularis
 
-Open `Settings -> Plugins -> Dameng`, then set:
+Open `Settings -> Plugins -> DM`, then set:
 
 ```text
 jdbc_driver_path=/Users/<you>/Library/Application Support/com.debba.tabularis/jdbc/DmJdbcDriver8.jar
@@ -114,7 +114,7 @@ Release artifacts should include:
 dameng-plugin
 dameng-plugin.bat
 manifest.json
-target/tabularis-dameng-plugin-0.1.0.jar
+target/tabularis-dameng-plugin-0.1.1.jar
 ```
 
 Do not include:
