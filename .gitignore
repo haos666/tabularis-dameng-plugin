@@ -17,4 +17,4 @@ DmJdbcDriver*.jar
 # Logs and temp files
 *.log
 *.tmp
-.DSStore
+.DS_Store
