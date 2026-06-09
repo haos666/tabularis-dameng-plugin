@@ -33,8 +33,9 @@ final class RpcServer {
         } catch (RpcException e) {
             return serialize(error(id, e.code(), e.getMessage()));
         } catch (SQLException e) {
-            System.err.println("Dameng JDBC error: " + e.getMessage());
-            return serialize(error(id, -32603, e.getMessage()));
+            String message = SqlErrors.message("method '" + method + "'", e);
+            System.err.println("Dameng JDBC error: " + message);
+            return serialize(error(id, -32603, message));
         } catch (Exception e) {
             System.err.println("Unexpected plugin error: " + e.getClass().getSimpleName() + ": " + e.getMessage());
             return serialize(error(id, -32603, e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));

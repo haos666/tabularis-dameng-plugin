@@ -21,7 +21,10 @@
 - 在 SQL 编辑器执行查询、DML 和 DDL
 - 通过插件侧 `execute_query_batch` JSON-RPC 执行多语句批处理
 - 支持 Tabularis 行编辑 UI 的新增、更新、删除
+- 行编辑按目标 JDBC 列类型绑定参数，支持 BLOB/VARBINARY base64 和 CLOB 文本
+- 支持对 identity/default-only 表执行空 `insert_record`
 - 生成表、列、索引、外键管理 SQL
+- 更稳定地生成列 rename、nullable、default、comment 变更 DDL
 - 创建、修改、删除视图
 - 通过插件侧 JSON-RPC 创建和删除触发器
 - 删除索引和外键
@@ -52,7 +55,7 @@ chmod +x dameng-plugin
 构建产物位置：
 
 ```text
-target/tabularis-dameng-plugin-0.8.0.jar
+target/tabularis-dameng-plugin-0.9.0.jar
 ```
 
 ## 本地安装
@@ -70,7 +73,7 @@ PLUGIN_DIR="$HOME/Library/Application Support/com.debba.tabularis/plugins/dameng
 
 mkdir -p "$PLUGIN_DIR/target"
 cp manifest.json dameng-plugin dameng-plugin.bat "$PLUGIN_DIR/"
-cp target/tabularis-dameng-plugin-0.8.0.jar "$PLUGIN_DIR/target/"
+cp target/tabularis-dameng-plugin-0.9.0.jar "$PLUGIN_DIR/target/"
 chmod +x "$PLUGIN_DIR/dameng-plugin"
 ```
 
@@ -114,14 +117,14 @@ schema 由 Tabularis 单独选择和传递。
 
 本地验证时，Docker 达梦实例里的 `DEV2` schema 已准备了一组销售业务演示数据：
 
-- 表：`CUSTOMERS`、`PRODUCTS`、`ORDERS`、`ORDER_ITEMS`、`ORDER_AUDIT`、`T_WRITE_TEST`
+- 表：`CUSTOMERS`、`PRODUCTS`、`ORDERS`、`ORDER_ITEMS`、`ORDER_AUDIT`、`T_WRITE_TEST`、`T_LOB_TEST`、`T_DEFAULT_TEST`
 - 外键：订单关联客户、订单明细关联订单、订单明细关联产品
 - 索引：客户/订单/产品查询索引，以及 `UX_PRODUCTS_SKU`
 - 视图：`V_ORDER_SUMMARY`、`V_ORDER_DETAIL`、`V_CUSTOMER_LIFETIME_VALUE`、`V_PRODUCT_SALES`
 - 函数/过程：`FN_CUSTOMER_ORDER_COUNT`、`FN_CUSTOMER_TOTAL_AMOUNT`、`P_REFRESH_ORDER_STATS`
 - 触发器：`TRG_ORDERS_AUDIT`
 
-这套数据已在 Tabularis 本地验证通过：schema、表、表注释、列、列注释、索引、外键、视图、视图列、视图查询、函数/过程、routine 参数、触发器、触发器定义、Visual Explain、ER 元数据、SQL 写入、行编辑以及视图/索引/外键管理路径都可以通过 `DM` 插件正常工作。触发器创建/删除 RPC 已在插件协议侧可用；当前 Tabularis external adapter 构建可能还需要主项目补路由后，触发器创建弹窗才能真正调用它们。
+这套数据已在 Tabularis 本地验证通过：schema、表、表注释、列、列注释、索引、外键、视图、视图列、视图查询、函数/过程、routine 参数、触发器、触发器定义、Visual Explain、ER 元数据、SQL 写入、行编辑、按列类型写入、BLOB/CLOB 冒烟测试、空默认值插入以及视图/索引/外键管理路径都可以通过 `DM` 插件正常工作。触发器创建/删除 RPC 已在插件协议侧可用；当前 Tabularis external adapter 构建可能还需要主项目补路由后，触发器创建弹窗才能真正调用它们。
 
 可复用初始化脚本在 `docs/demo-schema.sql`。
 
@@ -132,6 +135,10 @@ schema 由 Tabularis 单独选择和传递。
 - `initialize` 使用 `URLClassLoader` 加载 `dm.jdbc.driver.DmDriver`。
 - `execute_query` 允许 SQL 编辑器写入和 DDL。有结果集的语句返回 rows；无结果集的语句返回 `affected_rows`。
 - `execute_query_batch` 在同一个 JDBC 连接上按顺序执行多条语句，保持 autocommit，不自动包事务，单条失败后继续执行后续语句，并为每条语句返回 `{ result, error, execution_time_ms }`。该 RPC 可直接用 JSON-RPC 测试；当前 Tabularis external adapter 版本可能尚未转发。
+- `insert_record`、`update_record` 会按目标列 JDBC metadata 绑定参数。BLOB/VARBINARY 使用 base64 字符串，可带 `data:*;base64,...` 前缀；CLOB/LONGVARCHAR 使用普通文本字符串。
+- 空 `insert_record` data 会转换为 `INSERT ... DEFAULT VALUES`，用于 identity/default-only 表。
+- DDL preview 会用稳定语句处理列 rename、nullable、default、comment 变更。
+- JDBC 错误会补充 method/action 上下文，同时保留达梦原始错误、SQLState 和 vendor code。
 - `get_databases` 返回可见 schema，方便 Tabularis 连接窗口中的“加载数据库”按钮有可选值。
 - `get_tables` 从 `ALL_TAB_COMMENTS` 返回表注释。
 - `get_columns`、`get_schema_snapshot`、`get_all_columns_batch` 从 `ALL_COL_COMMENTS` 返回列注释，并在达梦字典可用时返回 identity 自增信息。
@@ -149,7 +156,7 @@ schema 由 Tabularis 单独选择和传递。
 发布产物命名示例：
 
 ```text
-tabularis-dameng-plugin-0.8.0.zip
+tabularis-dameng-plugin-0.9.0.zip
 ```
 
 zip 应包含：
@@ -158,7 +165,7 @@ zip 应包含：
 dameng-plugin
 dameng-plugin.bat
 manifest.json
-target/tabularis-dameng-plugin-0.8.0.jar
+target/tabularis-dameng-plugin-0.9.0.jar
 ```
 
 不要包含：

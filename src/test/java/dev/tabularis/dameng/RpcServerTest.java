@@ -19,11 +19,14 @@ final class RpcServerTest {
     void manifestAdvertisesTriggerCapabilityAndVersion() throws Exception {
         var manifest = Json.MAPPER.readTree(Files.readString(Path.of("manifest.json")));
 
-        assertEquals("0.8.0", manifest.path("version").asText());
+        assertEquals("0.9.0", manifest.path("version").asText());
         assertTrue(manifest.path("capabilities").path("triggers").asBoolean());
         assertEquals("DM", manifest.path("name").asText());
         assertTrue(manifest.path("data_types").findValuesAsText("name").contains("VARBINARY"));
         assertTrue(manifest.path("data_types").findValuesAsText("name").contains("LONGVARCHAR"));
+        assertTrue(manifest.path("data_types").findValuesAsText("name").contains("LONGVARBINARY"));
+        assertTrue(manifest.path("data_types").findValuesAsText("name").contains("DOUBLE PRECISION"));
+        assertTrue(manifest.path("data_types").findValuesAsText("name").contains("INTERVAL DAY TO SECOND"));
     }
 
     @Test

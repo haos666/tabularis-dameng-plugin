@@ -78,6 +78,10 @@ final class DamengSql {
         return statements;
     }
 
+    static String defaultInsertSql(String table, String schema) {
+        return "INSERT INTO " + qualifiedName(table, schema) + " DEFAULT VALUES";
+    }
+
     static List<String> alterColumnSql(String table, ColumnDefinition oldColumn, ColumnDefinition newColumn, String schema) {
         String tableName = qualifiedName(table, schema);
         List<String> statements = new ArrayList<>();
@@ -86,7 +90,7 @@ final class DamengSql {
                     + " RENAME COLUMN " + quoteIdentifier(oldColumn.name())
                     + " TO " + quoteIdentifier(newColumn.name()));
         }
-        if (!oldColumn.dataType().equals(newColumn.dataType())
+        if (!sameDataType(oldColumn.dataType(), newColumn.dataType())
                 || oldColumn.nullable() != newColumn.nullable()
                 || oldColumn.autoIncrement() != newColumn.autoIncrement()
                 || !sameDefault(oldColumn.defaultValue(), newColumn.defaultValue())) {
@@ -94,6 +98,9 @@ final class DamengSql {
         }
         if (oldColumn.primaryKey() != newColumn.primaryKey()) {
             throw new RpcException(-32601, "Altering primary keys is not supported by the DM plugin.");
+        }
+        if (!sameComment(oldColumn.comment(), newColumn.comment())) {
+            appendColumnCommentValue(statements, tableName, newColumn.name(), newColumn.comment());
         }
         if (statements.isEmpty()) {
             throw new RpcException(-32602, "No column changes detected.");
@@ -184,6 +191,18 @@ final class DamengSql {
         return l.equals(r);
     }
 
+    private static boolean sameDataType(String left, String right) {
+        String l = left == null ? "" : left.strip().replaceAll("\\s+", " ").toUpperCase(Locale.ROOT);
+        String r = right == null ? "" : right.strip().replaceAll("\\s+", " ").toUpperCase(Locale.ROOT);
+        return l.equals(r);
+    }
+
+    private static boolean sameComment(String left, String right) {
+        String l = left == null ? "" : left.strip();
+        String r = right == null ? "" : right.strip();
+        return l.equals(r);
+    }
+
     private static void appendFkAction(StringBuilder sql, String keyword, String action) {
         if (action == null || action.isBlank()) {
             return;
@@ -208,9 +227,13 @@ final class DamengSql {
 
     private static void appendColumnComment(List<String> statements, String qualifiedTable, ColumnDefinition column) {
         if (column.comment() != null && !column.comment().isBlank()) {
-            statements.add("COMMENT ON COLUMN " + qualifiedTable + "." + quoteIdentifier(column.name())
-                    + " IS " + sqlString(column.comment()));
+            appendColumnCommentValue(statements, qualifiedTable, column.name(), column.comment());
         }
+    }
+
+    private static void appendColumnCommentValue(List<String> statements, String qualifiedTable, String columnName, String comment) {
+        statements.add("COMMENT ON COLUMN " + qualifiedTable + "." + quoteIdentifier(columnName)
+                + " IS " + sqlString(comment == null ? "" : comment));
     }
 
     private static String sqlString(String value) {

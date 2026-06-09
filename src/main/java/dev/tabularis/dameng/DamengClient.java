@@ -34,6 +34,9 @@ class DamengClient {
     private Driver driver;
     private URLClassLoader driverClassLoader;
 
+    private record JdbcColumn(String name, int sqlType, String typeName) {
+    }
+
     synchronized void initialize(PluginSettings newSettings) throws Exception {
         if (!Files.isRegularFile(newSettings.jdbcDriverPath())) {
             throw new RpcException(-32602, "Dameng JDBC driver jar not found: " + newSettings.jdbcDriverPath());
@@ -434,6 +437,9 @@ class DamengClient {
                 try {
                     item.set("result", executeOne(stmt, query, limit, page));
                     item.set("error", Json.NODES.nullNode());
+                } catch (SQLException e) {
+                    item.set("result", Json.NODES.nullNode());
+                    item.put("error", SqlErrors.message("execute_query_batch statement", e));
                 } catch (Exception e) {
                     item.set("result", Json.NODES.nullNode());
                     item.put("error", e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
@@ -446,48 +452,78 @@ class DamengClient {
     }
 
     long insertRecord(ConnectionParams params, String table, JsonNode data, String schema, long maxBlobSize) throws SQLException {
-        if (data == null || !data.isObject() || data.isEmpty()) {
-            throw new RpcException(-32602, "insert_record requires non-empty object 'data'.");
+        if (data == null || !data.isObject()) {
+            throw new RpcException(-32602, "insert_record requires object 'data'.");
         }
-        List<String> columns = new ArrayList<>();
-        data.fieldNames().forEachRemaining(columns::add);
-        String placeholders = "?,".repeat(columns.size());
-        placeholders = placeholders.substring(0, placeholders.length() - 1);
-        String sql = "INSERT INTO " + DamengSql.qualifiedName(table, schema)
-                + " (" + columns.stream().map(DamengSql::quoteIdentifier).reduce((a, b) -> a + ", " + b).orElse("") + ")"
-                + " VALUES (" + placeholders + ")";
 
-        try (Connection conn = connect(params, false);
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.setQueryTimeout(settings().queryTimeoutSec());
-            for (int i = 0; i < columns.size(); i++) {
-                JdbcJson.bind(stmt, i + 1, data.get(columns.get(i)));
+        try (Connection conn = connect(params, false)) {
+            String owner = resolveSchema(conn, schema);
+            applySchema(conn, owner);
+            if (data.isEmpty()) {
+                return executeUpdate(conn, DamengSql.defaultInsertSql(table, owner), "insert empty row into " + table);
             }
-            return stmt.executeUpdate();
+
+            Map<String, JdbcColumn> metadata = jdbcColumns(conn, owner, table);
+            List<String> columns = new ArrayList<>();
+            data.fieldNames().forEachRemaining(columns::add);
+            String placeholders = "?,".repeat(columns.size());
+            placeholders = placeholders.substring(0, placeholders.length() - 1);
+            String sql = "INSERT INTO " + DamengSql.qualifiedName(table, owner)
+                    + " (" + columns.stream().map(DamengSql::quoteIdentifier).reduce((a, b) -> a + ", " + b).orElse("") + ")"
+                    + " VALUES (" + placeholders + ")";
+
+            try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                stmt.setQueryTimeout(settings().queryTimeoutSec());
+                for (int i = 0; i < columns.size(); i++) {
+                    JdbcColumn column = requireJdbcColumn(metadata, columns.get(i), table);
+                    JdbcJson.bind(stmt, i + 1, data.get(columns.get(i)), column.sqlType(), column.typeName(), maxBlobSize);
+                }
+                return stmt.executeUpdate();
+            }
+        }
+    }
+
+    private long executeUpdate(Connection conn, String sql, String action) throws SQLException {
+        try (Statement stmt = conn.createStatement()) {
+            stmt.setQueryTimeout(settings().queryTimeoutSec());
+            return stmt.executeUpdate(sql);
+        } catch (SQLException e) {
+            throw SqlErrors.withContext(action, e);
         }
     }
 
     long updateRecord(ConnectionParams params, String table, String pkCol, JsonNode pkVal, String colName, JsonNode newVal, String schema, long maxBlobSize) throws SQLException {
-        String sql = "UPDATE " + DamengSql.qualifiedName(table, schema)
-                + " SET " + DamengSql.quoteIdentifier(colName) + " = ?"
-                + " WHERE " + DamengSql.quoteIdentifier(pkCol) + " = ?";
-        try (Connection conn = connect(params, false);
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.setQueryTimeout(settings().queryTimeoutSec());
-            JdbcJson.bind(stmt, 1, newVal);
-            JdbcJson.bind(stmt, 2, pkVal);
-            return stmt.executeUpdate();
+        try (Connection conn = connect(params, false)) {
+            String owner = resolveSchema(conn, schema);
+            applySchema(conn, owner);
+            Map<String, JdbcColumn> metadata = jdbcColumns(conn, owner, table);
+            JdbcColumn valueColumn = requireJdbcColumn(metadata, colName, table);
+            JdbcColumn pkColumn = requireJdbcColumn(metadata, pkCol, table);
+            String sql = "UPDATE " + DamengSql.qualifiedName(table, owner)
+                    + " SET " + DamengSql.quoteIdentifier(colName) + " = ?"
+                    + " WHERE " + DamengSql.quoteIdentifier(pkCol) + " = ?";
+            try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                stmt.setQueryTimeout(settings().queryTimeoutSec());
+                JdbcJson.bind(stmt, 1, newVal, valueColumn.sqlType(), valueColumn.typeName(), maxBlobSize);
+                JdbcJson.bind(stmt, 2, pkVal, pkColumn.sqlType(), pkColumn.typeName(), maxBlobSize);
+                return stmt.executeUpdate();
+            }
         }
     }
 
     long deleteRecord(ConnectionParams params, String table, String pkCol, JsonNode pkVal, String schema) throws SQLException {
-        String sql = "DELETE FROM " + DamengSql.qualifiedName(table, schema)
-                + " WHERE " + DamengSql.quoteIdentifier(pkCol) + " = ?";
-        try (Connection conn = connect(params, false);
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.setQueryTimeout(settings().queryTimeoutSec());
-            JdbcJson.bind(stmt, 1, pkVal);
-            return stmt.executeUpdate();
+        try (Connection conn = connect(params, false)) {
+            String owner = resolveSchema(conn, schema);
+            applySchema(conn, owner);
+            Map<String, JdbcColumn> metadata = jdbcColumns(conn, owner, table);
+            JdbcColumn pkColumn = requireJdbcColumn(metadata, pkCol, table);
+            String sql = "DELETE FROM " + DamengSql.qualifiedName(table, owner)
+                    + " WHERE " + DamengSql.quoteIdentifier(pkCol) + " = ?";
+            try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                stmt.setQueryTimeout(settings().queryTimeoutSec());
+                JdbcJson.bind(stmt, 1, pkVal, pkColumn.sqlType(), pkColumn.typeName(), 0);
+                return stmt.executeUpdate();
+            }
         }
     }
 
@@ -703,6 +739,31 @@ class DamengClient {
             return Set.of();
         }
         return columns;
+    }
+
+    private static Map<String, JdbcColumn> jdbcColumns(Connection conn, String owner, String table) throws SQLException {
+        Map<String, JdbcColumn> columns = new LinkedHashMap<>();
+        try (ResultSet rs = conn.getMetaData().getColumns(null, owner, normalizeIdentifier(table), null)) {
+            while (rs.next()) {
+                String name = rs.getString("COLUMN_NAME");
+                if (name != null) {
+                    columns.put(normalizeIdentifier(name), new JdbcColumn(
+                            name,
+                            rs.getInt("DATA_TYPE"),
+                            rs.getString("TYPE_NAME")
+                    ));
+                }
+            }
+        }
+        return columns;
+    }
+
+    private static JdbcColumn requireJdbcColumn(Map<String, JdbcColumn> columns, String columnName, String tableName) {
+        JdbcColumn column = columns.get(normalizeIdentifier(columnName));
+        if (column == null) {
+            throw new RpcException(-32602, "Column '" + columnName + "' was not found in table '" + tableName + "'.");
+        }
+        return column;
     }
 
     private List<Map<String, JsonNode>> getForeignKeys(Connection conn, String owner, String table) throws SQLException {

@@ -48,6 +48,45 @@ final class DamengSqlTest {
     }
 
     @Test
+    void altersColumnCommentWithoutTypeChange() {
+        var statements = DamengSql.alterColumnSql(
+                "orders",
+                new ColumnDefinition("note", "varchar(200)", true, false, false, null, "Old note"),
+                new ColumnDefinition("note", "VARCHAR(200)", true, false, false, null, "New note"),
+                "dev2"
+        );
+
+        assertEquals(1, statements.size());
+        assertEquals("COMMENT ON COLUMN \"DEV2\".\"ORDERS\".\"NOTE\" IS 'New note'", statements.get(0));
+    }
+
+    @Test
+    void altersColumnRenameAndClearsComment() {
+        var statements = DamengSql.alterColumnSql(
+                "orders",
+                new ColumnDefinition("old_note", "VARCHAR(200)", true, false, false, null, "Old note"),
+                new ColumnDefinition("new_note", "VARCHAR(200)", true, false, false, null, null),
+                "dev2"
+        );
+
+        assertEquals("ALTER TABLE \"DEV2\".\"ORDERS\" RENAME COLUMN \"OLD_NOTE\" TO \"NEW_NOTE\"", statements.get(0));
+        assertEquals("COMMENT ON COLUMN \"DEV2\".\"ORDERS\".\"NEW_NOTE\" IS ''", statements.get(1));
+    }
+
+    @Test
+    void altersColumnDefaultAndNullableWithoutRename() {
+        var statements = DamengSql.alterColumnSql(
+                "orders",
+                new ColumnDefinition("score", "INT", true, false, false, null, null),
+                new ColumnDefinition("score", "INT", false, false, false, "0", null),
+                "dev2"
+        );
+
+        assertEquals(1, statements.size());
+        assertEquals("ALTER TABLE \"DEV2\".\"ORDERS\" MODIFY \"SCORE\" INT NOT NULL DEFAULT 0", statements.get(0));
+    }
+
+    @Test
     void createsIndexAndForeignKeySql() {
         assertEquals(
                 "CREATE UNIQUE INDEX \"UX_TEST\" ON \"DEV2\".\"ORDERS\" (\"ORDER_NO\")",
@@ -79,5 +118,13 @@ final class DamengSqlTest {
 
         assertEquals("ALTER TABLE \"DEV2\".\"ORDERS\" ADD \"MEMO\" VARCHAR(200)", statements.get(0));
         assertEquals("COMMENT ON COLUMN \"DEV2\".\"ORDERS\".\"MEMO\" IS 'Operator note'", statements.get(1));
+    }
+
+    @Test
+    void generatesDefaultValuesInsertForEmptyRecord() {
+        assertEquals(
+                "INSERT INTO \"DEV2\".\"T_DEFAULT_TEST\" DEFAULT VALUES",
+                DamengSql.defaultInsertSql("t_default_test", "dev2")
+        );
     }
 }
