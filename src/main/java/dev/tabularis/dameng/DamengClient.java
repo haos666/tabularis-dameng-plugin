@@ -233,22 +233,22 @@ class DamengClient {
         return getColumns(params, view, schema);
     }
 
-    ObjectNode getAllColumnsBatch(ConnectionParams params, String schema) throws SQLException {
+    ObjectNode getAllColumnsBatch(ConnectionParams params, String schema, List<String> requestedTables) throws SQLException {
         try (Connection conn = connect(params)) {
             String owner = resolveSchema(conn, schema);
             ObjectNode result = Json.NODES.objectNode();
-            for (String table : getTables(conn, owner)) {
+            for (String table : requestedTables(getTables(conn, owner), requestedTables)) {
                 result.set(table, columnsArray(getColumns(conn, owner, table)));
             }
             return result;
         }
     }
 
-    ObjectNode getAllForeignKeysBatch(ConnectionParams params, String schema) throws SQLException {
+    ObjectNode getAllForeignKeysBatch(ConnectionParams params, String schema, List<String> requestedTables) throws SQLException {
         try (Connection conn = connect(params)) {
             String owner = resolveSchema(conn, schema);
             ObjectNode result = Json.NODES.objectNode();
-            for (String table : getTables(conn, owner)) {
+            for (String table : requestedTables(getTables(conn, owner), requestedTables)) {
                 result.set(table, columnsArray(getForeignKeys(conn, owner, table)));
             }
             return result;
@@ -607,6 +607,22 @@ class DamengClient {
         }
     }
 
+    private static List<String> requestedTables(List<String> allTables, List<String> requestedTables) {
+        if (requestedTables == null || requestedTables.isEmpty()) {
+            return allTables;
+        }
+
+        Set<String> existing = new LinkedHashSet<>(allTables);
+        List<String> tables = new ArrayList<>();
+        for (String requested : requestedTables) {
+            String table = normalizeIdentifier(requested);
+            if (existing.contains(table)) {
+                tables.add(table);
+            }
+        }
+        return tables;
+    }
+
     private List<Map<String, JsonNode>> getColumns(Connection conn, String owner, String table) throws SQLException {
         try (PreparedStatement stmt = conn.prepareStatement("""
                 SELECT
@@ -806,11 +822,14 @@ class DamengClient {
     static String triggerDefinition(String description, String body, String name, String tableName, String timing, String event) {
         String cleanDescription = description == null ? "" : description.strip();
         String cleanBody = body == null ? "" : body.strip();
+        if (startsWithCreateTrigger(cleanBody)) {
+            return cleanBody;
+        }
         if (!cleanDescription.isBlank() && !cleanBody.isBlank()) {
             return cleanDescription + "\n" + cleanBody;
         }
         if (!cleanBody.isBlank()) {
-            return cleanBody;
+            return triggerSignature(name, tableName, timing, event) + "\n" + cleanBody;
         }
         if (!cleanDescription.isBlank()) {
             return cleanDescription;
@@ -818,8 +837,16 @@ class DamengClient {
         return triggerSignature(name, tableName, timing, event);
     }
 
+    private static boolean startsWithCreateTrigger(String value) {
+        if (value == null || value.isBlank()) {
+            return false;
+        }
+        String normalized = value.stripLeading().toUpperCase(Locale.ROOT).replaceAll("\\s+", " ");
+        return normalized.startsWith("CREATE TRIGGER ") || normalized.startsWith("CREATE OR REPLACE TRIGGER ");
+    }
+
     static String triggerSignature(String name, String tableName, String timing, String event) {
-        StringBuilder signature = new StringBuilder("TRIGGER ").append(name);
+        StringBuilder signature = new StringBuilder("CREATE TRIGGER ").append(name);
         if (timing != null && !timing.isBlank()) {
             signature.append(' ').append(timing);
         }
@@ -829,6 +856,7 @@ class DamengClient {
         if (tableName != null && !tableName.isBlank()) {
             signature.append(" ON ").append(tableName);
         }
+        signature.append(" FOR EACH ROW");
         return signature.toString();
     }
 

@@ -4,6 +4,8 @@ import org.junit.jupiter.api.Test;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.sql.SQLException;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -13,6 +15,15 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 final class RpcServerTest {
+    @Test
+    void manifestAdvertisesTriggerCapabilityAndVersion() throws Exception {
+        var manifest = Json.MAPPER.readTree(Files.readString(Path.of("manifest.json")));
+
+        assertEquals("0.7.0", manifest.path("version").asText());
+        assertTrue(manifest.path("capabilities").path("triggers").asBoolean());
+        assertEquals("DM", manifest.path("name").asText());
+    }
+
     @Test
     void returnsParseErrorForInvalidJson() throws Exception {
         RpcServer server = new RpcServer(new DamengClient());
@@ -50,6 +61,19 @@ final class RpcServerTest {
     }
 
     @Test
+    void batchMetadataAcceptsOptionalTablesParameter() throws Exception {
+        RpcServer server = new RpcServer(new StubDamengClient());
+
+        var response = Json.MAPPER.readTree(server.handleLine("""
+                {"jsonrpc":"2.0","method":"get_all_columns_batch","params":{"params":{},"schema":"DEV2","tables":["ORDERS"]},"id":25}
+                """));
+
+        assertEquals(25, response.path("id").asInt());
+        assertTrue(response.path("result").isObject());
+        assertEquals("ID", response.path("result").path("ORDERS").path(0).path("name").asText());
+    }
+
+    @Test
     void viewDefinitionUsesViewNameParameter() throws Exception {
         RpcServer server = new RpcServer(new StubDamengClient());
 
@@ -59,6 +83,29 @@ final class RpcServerTest {
 
         assertEquals(10, response.path("id").asInt());
         assertEquals("SELECT * FROM ORDERS", response.path("result").asText());
+    }
+
+    @Test
+    void protocolParameterAliasesDispatchToMetadataClient() throws Exception {
+        RpcServer server = new RpcServer(new StubDamengClient());
+
+        var view = Json.MAPPER.readTree(server.handleLine("""
+                {"jsonrpc":"2.0","method":"get_view_definition","params":{"params":{},"schema":"DEV2","view":"\\"V_ORDER_SUMMARY\\""},"id":26}
+                """));
+        var routine = Json.MAPPER.readTree(server.handleLine("""
+                {"jsonrpc":"2.0","method":"get_routine_definition","params":{"params":{},"schema":"DEV2","routine":"FN_CUSTOMER_ORDER_COUNT","routine_type":"FUNCTION"},"id":27}
+                """));
+        var trigger = Json.MAPPER.readTree(server.handleLine("""
+                {"jsonrpc":"2.0","method":"get_trigger_definition","params":{"params":{},"schema":"DEV2","trigger":"TRG_ORDERS_AUDIT","table_name":"ORDERS"},"id":28}
+                """));
+        var fk = Json.MAPPER.readTree(server.handleLine("""
+                {"jsonrpc":"2.0","method":"drop_foreign_key","params":{"params":{},"schema":"DEV2","table":"ORDERS","constraint_name":"FK_ORDERS_CUSTOMER"},"id":29}
+                """));
+
+        assertEquals("SELECT * FROM ORDERS", view.path("result").asText());
+        assertTrue(routine.path("result").asText().contains("FN_CUSTOMER_ORDER_COUNT"));
+        assertTrue(trigger.path("result").asText().contains("TRG_ORDERS_AUDIT"));
+        assertTrue(fk.path("result").isNull());
     }
 
     @Test
@@ -243,7 +290,26 @@ final class RpcServerTest {
         }
 
         @Override
-        com.fasterxml.jackson.databind.node.ObjectNode getAllForeignKeysBatch(ConnectionParams params, String schema) {
+        com.fasterxml.jackson.databind.node.ObjectNode getAllColumnsBatch(ConnectionParams params, String schema, List<String> tables) {
+            assertEquals("DEV2", schema);
+            assertEquals(List.of("ORDERS"), tables);
+
+            var result = Json.NODES.objectNode();
+            var columns = Json.NODES.arrayNode();
+            var column = Json.NODES.objectNode();
+            column.put("name", "ID");
+            column.put("data_type", "INT");
+            column.put("is_pk", true);
+            column.put("is_nullable", false);
+            column.put("is_auto_increment", true);
+            columns.add(column);
+            result.set("ORDERS", columns);
+            return result;
+        }
+
+        @Override
+        com.fasterxml.jackson.databind.node.ObjectNode getAllForeignKeysBatch(ConnectionParams params, String schema, List<String> tables) {
+            assertTrue(tables.isEmpty());
             var result = Json.NODES.objectNode();
             var keys = Json.NODES.arrayNode();
             var key = Json.NODES.objectNode();
@@ -413,6 +479,13 @@ final class RpcServerTest {
         @Override
         void createTrigger(ConnectionParams params, String triggerSql, String schema) {
             assertTrue(triggerSql.contains("TRG_WRITE_TEST"));
+            assertEquals("DEV2", schema);
+        }
+
+        @Override
+        void dropForeignKey(ConnectionParams params, String table, String fkName, String schema) {
+            assertEquals("ORDERS", table);
+            assertEquals("FK_ORDERS_CUSTOMER", fkName);
             assertEquals("DEV2", schema);
         }
     }

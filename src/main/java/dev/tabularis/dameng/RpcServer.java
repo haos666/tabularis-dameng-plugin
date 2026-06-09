@@ -66,35 +66,43 @@ final class RpcServer {
             case "get_views" -> columns(client.getViews(connectionParams(params), text(params.path("schema"))));
             case "get_view_definition" -> Json.NODES.textNode(client.getViewDefinition(
                     connectionParams(params),
-                    requiredText(params, "view_name"),
+                    requiredText(params, "view_name", "view", "name"),
                     text(params.path("schema"))
             ));
             case "get_view_columns" -> columns(client.getViewColumns(
                     connectionParams(params),
-                    requiredText(params, "view_name"),
+                    requiredText(params, "view_name", "view", "name"),
                     text(params.path("schema"))
             ));
             case "get_routines" -> columns(client.getRoutines(connectionParams(params), text(params.path("schema"))));
             case "get_routine_parameters" -> columns(client.getRoutineParameters(
                     connectionParams(params),
-                    requiredText(params, "routine_name"),
+                    requiredText(params, "routine_name", "routine", "name"),
                     text(params.path("schema"))
             ));
             case "get_routine_definition" -> Json.NODES.textNode(client.getRoutineDefinition(
                     connectionParams(params),
-                    requiredText(params, "routine_name"),
+                    requiredText(params, "routine_name", "routine", "name"),
                     text(params.path("routine_type")),
                     text(params.path("schema"))
             ));
             case "get_triggers" -> columns(client.getTriggers(connectionParams(params), text(params.path("schema"))));
             case "get_trigger_definition" -> Json.NODES.textNode(client.getTriggerDefinition(
                     connectionParams(params),
-                    requiredText(params, "trigger_name"),
+                    requiredText(params, "trigger_name", "trigger", "name"),
                     requiredText(params, "table_name"),
                     text(params.path("schema"))
             ));
-            case "get_all_columns_batch" -> client.getAllColumnsBatch(connectionParams(params), text(params.path("schema")));
-            case "get_all_foreign_keys_batch" -> client.getAllForeignKeysBatch(connectionParams(params), text(params.path("schema")));
+            case "get_all_columns_batch" -> client.getAllColumnsBatch(
+                    connectionParams(params),
+                    text(params.path("schema")),
+                    optionalStringArray(params.path("tables"))
+            );
+            case "get_all_foreign_keys_batch" -> client.getAllForeignKeysBatch(
+                    connectionParams(params),
+                    text(params.path("schema")),
+                    optionalStringArray(params.path("tables"))
+            );
             case "get_schema_snapshot" -> client.getSchemaSnapshot(connectionParams(params), text(params.path("schema")));
             case "execute_query" -> client.executeQuery(
                     connectionParams(params),
@@ -141,15 +149,15 @@ final class RpcServer {
                     text(params.path("schema"))
             ));
             case "create_view" -> {
-                client.createView(connectionParams(params), requiredText(params, "view_name"), requiredText(params, "definition"), text(params.path("schema")));
+                client.createView(connectionParams(params), requiredText(params, "view_name", "view", "name"), requiredText(params, "definition"), text(params.path("schema")));
                 yield Json.NODES.nullNode();
             }
             case "alter_view" -> {
-                client.alterView(connectionParams(params), requiredText(params, "view_name"), requiredText(params, "definition"), text(params.path("schema")));
+                client.alterView(connectionParams(params), requiredText(params, "view_name", "view", "name"), requiredText(params, "definition"), text(params.path("schema")));
                 yield Json.NODES.nullNode();
             }
             case "drop_view" -> {
-                client.dropView(connectionParams(params), requiredText(params, "view_name"), text(params.path("schema")));
+                client.dropView(connectionParams(params), requiredText(params, "view_name", "view", "name"), text(params.path("schema")));
                 yield Json.NODES.nullNode();
             }
             case "get_create_table_sql" -> DamengSql.toArray(DamengSql.createTableSql(
@@ -177,7 +185,7 @@ final class RpcServer {
             ));
             case "get_create_foreign_key_sql" -> DamengSql.toArray(DamengSql.createForeignKeySql(
                     requiredText(params, "table"),
-                    requiredText(params, "fk_name"),
+                    requiredText(params, "fk_name", "constraint_name"),
                     requiredText(params, "column"),
                     requiredText(params, "ref_table"),
                     requiredText(params, "ref_column"),
@@ -190,7 +198,7 @@ final class RpcServer {
                 yield Json.NODES.nullNode();
             }
             case "drop_foreign_key" -> {
-                client.dropForeignKey(connectionParams(params), requiredText(params, "table"), requiredText(params, "fk_name"), text(params.path("schema")));
+                client.dropForeignKey(connectionParams(params), requiredText(params, "table"), requiredText(params, "fk_name", "constraint_name"), text(params.path("schema")));
                 yield Json.NODES.nullNode();
             }
             case "create_trigger" -> {
@@ -198,7 +206,7 @@ final class RpcServer {
                 yield Json.NODES.nullNode();
             }
             case "drop_trigger" -> {
-                client.dropTrigger(connectionParams(params), requiredText(params, "trigger_name"), text(params.path("table_name")), text(params.path("schema")));
+                client.dropTrigger(connectionParams(params), requiredText(params, "trigger_name", "trigger", "name"), text(params.path("table_name")), text(params.path("schema")));
                 yield Json.NODES.nullNode();
             }
             default -> throw new RpcException(-32601, "method '" + method + "' is not implemented");
@@ -265,9 +273,20 @@ final class RpcServer {
     }
 
     private static String requiredText(JsonNode object, String field) {
-        String value = text(object.path(field));
+        return requiredText(object, new String[]{field});
+    }
+
+    private static String requiredText(JsonNode object, String... fields) {
+        String value = null;
+        String primary = fields.length == 0 ? "value" : fields[0];
+        for (String field : fields) {
+            value = text(object.path(field));
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
         if (value == null || value.isBlank()) {
-            throw new RpcException(-32602, "Missing required parameter '" + field + "'.");
+            throw new RpcException(-32602, "Missing required parameter '" + primary + "'.");
         }
         return value;
     }
@@ -278,6 +297,20 @@ final class RpcServer {
             throw new RpcException(-32602, "Missing required array parameter '" + field + "'.");
         }
 
+        return stringArray(value);
+    }
+
+    private static List<String> optionalStringArray(JsonNode value) {
+        if (value == null || value.isMissingNode() || value.isNull()) {
+            return List.of();
+        }
+        if (!value.isArray()) {
+            throw new RpcException(-32602, "Parameter 'tables' must be an array.");
+        }
+        return stringArray(value);
+    }
+
+    private static List<String> stringArray(JsonNode value) {
         List<String> items = new java.util.ArrayList<>();
         for (JsonNode item : value) {
             items.add(item == null || item.isNull() ? "" : item.asText());

@@ -2,7 +2,7 @@
   "$schema": "https://tabularis.dev/schemas/plugin-manifest.json",
   "id": "dameng",
   "name": "DM",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Dameng database driver using a user-provided JDBC jar.",
   "default_port": 5236,
   "default_username": "SYSDBA",
@@ -21,6 +21,7 @@
     "alter_primary_key": false,
     "alter_column": true,
     "create_foreign_keys": true,
+    "triggers": true,
     "manage_tables": true,
     "readonly": false,
     "sql_dialect": "oracle"

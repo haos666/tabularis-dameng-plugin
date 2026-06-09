@@ -72,8 +72,46 @@ final class DamengClientTest {
     @Test
     void buildsTriggerDefinitionFallback() {
         assertEquals(
-                "TRIGGER TRG_ORDERS_AUDIT AFTER UPDATE ON ORDERS",
+                "CREATE TRIGGER TRG_ORDERS_AUDIT AFTER UPDATE ON ORDERS FOR EACH ROW",
                 DamengClient.triggerDefinition(null, null, "TRG_ORDERS_AUDIT", "ORDERS", "AFTER", "UPDATE")
+        );
+    }
+
+    @Test
+    void buildsTriggerDefinitionFromBodyOnly() {
+        assertEquals(
+                "CREATE TRIGGER TRG_ORDERS_AUDIT AFTER UPDATE ON ORDERS FOR EACH ROW\nBEGIN NULL; END;",
+                DamengClient.triggerDefinition(null, "BEGIN NULL; END;", "TRG_ORDERS_AUDIT", "ORDERS", "AFTER", "UPDATE")
+        );
+    }
+
+    @Test
+    void buildsTriggerDefinitionFromDescriptionAndBody() {
+        assertEquals(
+                "CREATE TRIGGER TRG_ORDERS_AUDIT AFTER UPDATE ON ORDERS FOR EACH ROW\nBEGIN NULL; END;",
+                DamengClient.triggerDefinition(
+                        "CREATE TRIGGER TRG_ORDERS_AUDIT AFTER UPDATE ON ORDERS FOR EACH ROW",
+                        "BEGIN NULL; END;",
+                        "TRG_ORDERS_AUDIT",
+                        "ORDERS",
+                        "AFTER",
+                        "UPDATE"
+                )
+        );
+    }
+
+    @Test
+    void prefersFullCreateTriggerBodyOverDictionaryDescription() {
+        assertEquals(
+                "CREATE OR REPLACE TRIGGER TRG_ORDERS_AUDIT\nAFTER UPDATE ON ORDERS\nFOR EACH ROW\nBEGIN NULL; END;",
+                DamengClient.triggerDefinition(
+                        "TRG_ORDERS_AUDIT AFTER UPDATE ON ORDERS FOR EACH ROW",
+                        "CREATE OR REPLACE TRIGGER TRG_ORDERS_AUDIT\nAFTER UPDATE ON ORDERS\nFOR EACH ROW\nBEGIN NULL; END;",
+                        "TRG_ORDERS_AUDIT",
+                        "ORDERS",
+                        "AFTER",
+                        "UPDATE"
+                )
         );
     }
 }

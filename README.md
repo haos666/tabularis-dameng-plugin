@@ -14,7 +14,7 @@ This plugin runs as a standalone Java process and talks to Tabularis through JSO
 - List views, inspect view definitions, and load view columns
 - List stored functions/procedures and routine parameters
 - Return Dameng EXPLAIN plans for Tabularis Visual Explain
-- Pre-implement trigger metadata RPCs for future Tabularis plugin bridge support
+- List triggers, inspect trigger definitions, and create/drop triggers through Tabularis trigger UI
 - Return batch column and foreign key metadata for faster browsing
 - Return schema snapshots for Tabularis ER diagrams
 - Execute SQL queries, DML, and DDL from the SQL editor
@@ -22,10 +22,11 @@ This plugin runs as a standalone Java process and talks to Tabularis through JSO
 - Insert, update, and delete rows through Tabularis row editing
 - Generate table, column, index, and foreign-key management SQL
 - Create, alter, and drop views
+- Create and drop triggers
 - Drop indexes and foreign keys
 - Return Tabularis-compatible result sets
 
-Routine execution and routine management are still out of scope. Trigger create/drop RPCs are implemented in the plugin, but current Tabularis external plugin adapter versions do not forward them yet, so trigger editing may not be reachable from the UI. `execute_query_batch` is also implemented plugin-side; current Tabularis external adapter versions may still send SQL editor batches as repeated `execute_query` calls until an upstream adapter override is added.
+Routine execution and routine management are still out of scope. Trigger browse/view/create/drop RPCs are implemented and advertised through `capabilities.triggers`. `execute_query_batch` is also implemented plugin-side; current Tabularis external adapter versions may still send SQL editor batches as repeated `execute_query` calls until an upstream adapter override is added.
 
 ## Requirements
 
@@ -50,7 +51,7 @@ chmod +x dameng-plugin
 The executable jar is written to:
 
 ```text
-target/tabularis-dameng-plugin-0.6.0.jar
+target/tabularis-dameng-plugin-0.7.0.jar
 ```
 
 ## Install Locally
@@ -68,7 +69,7 @@ PLUGIN_DIR="$HOME/Library/Application Support/com.debba.tabularis/plugins/dameng
 
 mkdir -p "$PLUGIN_DIR/target"
 cp manifest.json dameng-plugin dameng-plugin.bat "$PLUGIN_DIR/"
-cp target/tabularis-dameng-plugin-0.6.0.jar "$PLUGIN_DIR/target/"
+cp target/tabularis-dameng-plugin-0.7.0.jar "$PLUGIN_DIR/target/"
 chmod +x "$PLUGIN_DIR/dameng-plugin"
 ```
 
@@ -119,7 +120,7 @@ For local validation, the `DEV2` schema in the Dameng Docker instance was popula
 - Routines: `FN_CUSTOMER_ORDER_COUNT`, `FN_CUSTOMER_TOTAL_AMOUNT`, `P_REFRESH_ORDER_STATS`
 - Trigger: `TRG_ORDERS_AUDIT`
 
-Tabularis has been verified locally with this dataset: schemas, tables, columns, indexes, foreign keys, views, view columns, view queries, routines, routine parameters, Visual Explain, ER metadata, SQL writes, row editing, and view/index/FK management paths all work through the `DM` plugin.
+Tabularis has been verified locally with this dataset: schemas, tables, columns, indexes, foreign keys, views, view columns, view queries, routines, routine parameters, triggers, trigger definitions, Visual Explain, ER metadata, SQL writes, row editing, and view/index/FK/trigger management paths all work through the `DM` plugin.
 
 The reusable setup script is available at `docs/demo-schema.sql`.
 
@@ -136,14 +137,14 @@ The reusable setup script is available at `docs/demo-schema.sql`.
 - `get_routines` and `get_routine_parameters` expose read-only stored function/procedure metadata.
 - routine definitions use `ALL_SOURCE` when available; otherwise the plugin returns a generated signature.
 - `explain_query` uses Dameng `EXPLAIN FOR`, parses JDBC plan rows into Tabularis' `ExplainPlan` tree, and preserves raw plan rows. The older text EXPLAIN parser is kept as a fallback.
-- `get_triggers` and `get_trigger_definition` are implemented. `create_trigger` and `drop_trigger` are also implemented plugin-side, but current Tabularis external plugin driver versions may not call trigger write RPCs until forwarding is added upstream.
+- `get_triggers`, `get_trigger_definition`, `create_trigger`, and `drop_trigger` are implemented and advertised with `capabilities.triggers: true`.
 
 ## Release Packaging
 
 Release artifacts are named like:
 
 ```text
-tabularis-dameng-plugin-0.6.0.zip
+tabularis-dameng-plugin-0.7.0.zip
 ```
 
 The zip should include:
@@ -152,7 +153,7 @@ The zip should include:
 dameng-plugin
 dameng-plugin.bat
 manifest.json
-target/tabularis-dameng-plugin-0.6.0.jar
+target/tabularis-dameng-plugin-0.7.0.jar
 ```
 
 Do not include:
