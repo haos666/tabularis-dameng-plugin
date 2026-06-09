@@ -103,6 +103,13 @@ final class RpcServer {
                     intValue(params.path("page"), 1),
                     text(params.path("schema"))
             );
+            case "execute_query_batch" -> client.executeQueryBatch(
+                    connectionParams(params),
+                    requiredStringArray(params, "queries"),
+                    optionalInt(params.path("limit")),
+                    intValue(params.path("page"), 1),
+                    text(params.path("schema"))
+            );
             case "explain_query" -> client.explainQuery(
                     connectionParams(params),
                     requiredText(params, "query"),
@@ -263,6 +270,19 @@ final class RpcServer {
             throw new RpcException(-32602, "Missing required parameter '" + field + "'.");
         }
         return value;
+    }
+
+    private static List<String> requiredStringArray(JsonNode object, String field) {
+        JsonNode value = object.path(field);
+        if (!value.isArray()) {
+            throw new RpcException(-32602, "Missing required array parameter '" + field + "'.");
+        }
+
+        List<String> items = new java.util.ArrayList<>();
+        for (JsonNode item : value) {
+            items.add(item == null || item.isNull() ? "" : item.asText());
+        }
+        return items;
     }
 
     static String text(JsonNode node) {

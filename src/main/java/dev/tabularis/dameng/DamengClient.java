@@ -402,27 +402,34 @@ class DamengClient {
     }
 
     ObjectNode executeQuery(ConnectionParams params, String query, Integer limit, int page, String schema) throws SQLException {
-        SqlSafety.requireNotEmpty(query);
-        boolean paginate = limit != null && SqlSafety.isReadOnlyQuery(query);
-        String finalQuery = paginate ? QueryPaginator.paginated(query, limit, page) : query;
         try (Connection conn = connect(params, false);
              Statement stmt = conn.createStatement()) {
             applySchema(conn, schema);
             stmt.setQueryTimeout(settings().queryTimeoutSec());
-            boolean hasResultSet = stmt.execute(finalQuery);
-            if (!hasResultSet) {
-                int affectedRows = stmt.getUpdateCount();
-                ObjectNode result = Json.NODES.objectNode();
-                result.set("columns", Json.NODES.arrayNode());
-                result.set("rows", Json.NODES.arrayNode());
-                result.put("affected_rows", Math.max(affectedRows, 0));
-                result.put("truncated", false);
-                result.set("pagination", Json.NODES.nullNode());
-                return result;
+            return executeOne(stmt, query, limit, page);
+        }
+    }
+
+    ArrayNode executeQueryBatch(ConnectionParams params, List<String> queries, Integer limit, int page, String schema) throws SQLException {
+        try (Connection conn = connect(params, false);
+             Statement stmt = conn.createStatement()) {
+            applySchema(conn, schema);
+            stmt.setQueryTimeout(settings().queryTimeoutSec());
+            ArrayNode results = Json.NODES.arrayNode();
+            for (String query : queries) {
+                long started = System.nanoTime();
+                ObjectNode item = Json.NODES.objectNode();
+                try {
+                    item.set("result", executeOne(stmt, query, limit, page));
+                    item.set("error", Json.NODES.nullNode());
+                } catch (Exception e) {
+                    item.set("result", Json.NODES.nullNode());
+                    item.put("error", e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+                }
+                item.put("execution_time_ms", elapsedMillis(started));
+                results.add(item);
             }
-            try (ResultSet rs = stmt.getResultSet()) {
-                return ResultSetJson.toQueryResult(rs, paginate ? limit : null, page);
-            }
+            return results;
         }
     }
 
@@ -531,6 +538,30 @@ class DamengClient {
             stmt.setQueryTimeout(settings().queryTimeoutSec());
             stmt.execute(sql);
         }
+    }
+
+    private ObjectNode executeOne(Statement stmt, String query, Integer limit, int page) throws SQLException {
+        SqlSafety.requireNotEmpty(query);
+        boolean paginate = limit != null && SqlSafety.isReadOnlyQuery(query);
+        String finalQuery = paginate ? QueryPaginator.paginated(query, limit, page) : query;
+        boolean hasResultSet = stmt.execute(finalQuery);
+        if (!hasResultSet) {
+            int affectedRows = stmt.getUpdateCount();
+            ObjectNode result = Json.NODES.objectNode();
+            result.set("columns", Json.NODES.arrayNode());
+            result.set("rows", Json.NODES.arrayNode());
+            result.put("affected_rows", Math.max(affectedRows, 0));
+            result.put("truncated", false);
+            result.set("pagination", Json.NODES.nullNode());
+            return result;
+        }
+        try (ResultSet rs = stmt.getResultSet()) {
+            return ResultSetJson.toQueryResult(rs, paginate ? limit : null, page);
+        }
+    }
+
+    private static double elapsedMillis(long startedNanos) {
+        return (System.nanoTime() - startedNanos) / 1_000_000.0;
     }
 
     private Connection connect(ConnectionParams params) throws SQLException {

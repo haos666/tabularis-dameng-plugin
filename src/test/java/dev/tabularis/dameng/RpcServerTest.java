@@ -129,6 +129,23 @@ final class RpcServerTest {
     }
 
     @Test
+    void executeQueryBatchDispatchesToMetadataClient() throws Exception {
+        RpcServer server = new RpcServer(new StubDamengClient());
+
+        var response = Json.MAPPER.readTree(server.handleLine("""
+                {"jsonrpc":"2.0","method":"execute_query_batch","params":{"params":{},"schema":"DEV2","queries":["SELECT * FROM T_WRITE_TEST","BAD SQL"],"limit":25,"page":2},"id":24}
+                """));
+
+        assertEquals(24, response.path("id").asInt());
+        assertTrue(response.path("result").isArray());
+        assertTrue(response.path("result").path(0).path("error").isNull());
+        assertEquals("NAME", response.path("result").path(0).path("result").path("columns").path(0).path("name").asText());
+        assertTrue(response.path("result").path(0).path("execution_time_ms").isNumber());
+        assertTrue(response.path("result").path(1).path("result").isNull());
+        assertEquals("syntax error", response.path("result").path(1).path("error").asText());
+    }
+
+    @Test
     void triggerMetadataDispatchesToMetadataClient() throws Exception {
         RpcServer server = new RpcServer(new StubDamengClient());
 
@@ -302,6 +319,41 @@ final class RpcServerTest {
             assertTrue(analyze);
             assertEquals("DEV2", schema);
             return ExplainParser.toExplainPlan("1   #NSET2: [1, 1, 10]", query);
+        }
+
+        @Override
+        com.fasterxml.jackson.databind.node.ArrayNode executeQueryBatch(ConnectionParams params, List<String> queries, Integer limit, int page, String schema) {
+            assertEquals(List.of("SELECT * FROM T_WRITE_TEST", "BAD SQL"), queries);
+            assertEquals(25, limit);
+            assertEquals(2, page);
+            assertEquals("DEV2", schema);
+
+            var results = Json.NODES.arrayNode();
+
+            var success = Json.NODES.objectNode();
+            var result = Json.NODES.objectNode();
+            var columns = Json.NODES.arrayNode();
+            var column = Json.NODES.objectNode();
+            column.put("name", "NAME");
+            column.put("data_type", "VARCHAR");
+            columns.add(column);
+            result.set("columns", columns);
+            result.set("rows", Json.NODES.arrayNode());
+            result.put("affected_rows", 0);
+            result.put("truncated", false);
+            result.set("pagination", Json.NODES.nullNode());
+            success.set("result", result);
+            success.set("error", Json.NODES.nullNode());
+            success.put("execution_time_ms", 1.25);
+            results.add(success);
+
+            var failure = Json.NODES.objectNode();
+            failure.set("result", Json.NODES.nullNode());
+            failure.put("error", "syntax error");
+            failure.put("execution_time_ms", 0.5);
+            results.add(failure);
+
+            return results;
         }
 
         @Override

@@ -18,13 +18,14 @@
 - 批量返回列和外键元数据，加快 Tabularis 浏览
 - 返回 schema 快照，支持 Tabularis ER 图
 - 在 SQL 编辑器执行查询、DML 和 DDL
+- 通过插件侧 `execute_query_batch` JSON-RPC 执行多语句批处理
 - 支持 Tabularis 行编辑 UI 的新增、更新、删除
 - 生成表、列、索引、外键管理 SQL
 - 创建、修改、删除视图
 - 删除索引和外键
 - 返回 Tabularis 兼容的结果集
 
-routine 执行和 routine 管理暂不实现。trigger 创建/删除 RPC 已在插件侧实现，但当前 Tabularis external plugin adapter 版本尚未转发这些写入 RPC，因此 UI 中可能暂时不可达。
+routine 执行和 routine 管理暂不实现。trigger 创建/删除 RPC 已在插件侧实现，但当前 Tabularis external plugin adapter 版本尚未转发这些写入 RPC，因此 UI 中可能暂时不可达。`execute_query_batch` 也已在插件侧实现；当前 Tabularis external adapter 版本可能仍会把 SQL 编辑器批处理拆成多次 `execute_query`，直到主项目后续增加 adapter override。
 
 ## 环境要求
 
@@ -49,7 +50,7 @@ chmod +x dameng-plugin
 构建产物位置：
 
 ```text
-target/tabularis-dameng-plugin-0.5.0.jar
+target/tabularis-dameng-plugin-0.6.0.jar
 ```
 
 ## 本地安装
@@ -67,7 +68,7 @@ PLUGIN_DIR="$HOME/Library/Application Support/com.debba.tabularis/plugins/dameng
 
 mkdir -p "$PLUGIN_DIR/target"
 cp manifest.json dameng-plugin dameng-plugin.bat "$PLUGIN_DIR/"
-cp target/tabularis-dameng-plugin-0.5.0.jar "$PLUGIN_DIR/target/"
+cp target/tabularis-dameng-plugin-0.6.0.jar "$PLUGIN_DIR/target/"
 chmod +x "$PLUGIN_DIR/dameng-plugin"
 ```
 
@@ -127,7 +128,8 @@ schema 由 Tabularis 单独选择和传递。
 - stdout 只输出 JSON-RPC 响应。
 - 日志和诊断信息输出到 stderr。
 - `initialize` 使用 `URLClassLoader` 加载 `dm.jdbc.driver.DmDriver`。
-- `execute_query` 从 v0.5.0 开始允许 SQL 编辑器写入和 DDL。有结果集的语句返回 rows；无结果集的语句返回 `affected_rows`。
+- `execute_query` 允许 SQL 编辑器写入和 DDL。有结果集的语句返回 rows；无结果集的语句返回 `affected_rows`。
+- `execute_query_batch` 在同一个 JDBC 连接上按顺序执行多条语句，保持 autocommit，不自动包事务，单条失败后继续执行后续语句，并为每条语句返回 `{ result, error, execution_time_ms }`。该 RPC 可直接用 JSON-RPC 测试；当前 Tabularis external adapter 版本可能尚未转发。
 - `get_databases` 返回可见 schema，方便 Tabularis 连接窗口中的“加载数据库”按钮有可选值。
 - `get_schema_snapshot` 返回表、列和外键，供 Tabularis ER 图使用。
 - `get_views`、`get_view_definition`、`get_view_columns` 查看视图；`create_view`、`alter_view`、`drop_view` 管理视图。
@@ -141,7 +143,7 @@ schema 由 Tabularis 单独选择和传递。
 发布产物命名示例：
 
 ```text
-tabularis-dameng-plugin-0.5.0.zip
+tabularis-dameng-plugin-0.6.0.zip
 ```
 
 zip 应包含：
@@ -150,7 +152,7 @@ zip 应包含：
 dameng-plugin
 dameng-plugin.bat
 manifest.json
-target/tabularis-dameng-plugin-0.5.0.jar
+target/tabularis-dameng-plugin-0.6.0.jar
 ```
 
 不要包含：
