@@ -19,9 +19,9 @@ final class DamengSqlTest {
     @Test
     void createsTableWithIdentityAndPrimaryKey() {
         var sql = DamengSql.createTableSql("t_write_test", List.of(
-                new ColumnDefinition("id", "INT", false, true, true, null),
-                new ColumnDefinition("name", "VARCHAR(80)", true, false, false, "'unknown'")
-        ), "dev2");
+                new ColumnDefinition("id", "INT", false, true, true, null, "Primary identifier"),
+                new ColumnDefinition("name", "VARCHAR(80)", true, false, false, "'unknown'", "Display name")
+        ), "dev2", "Editable rows");
 
         assertEquals("""
                 CREATE TABLE "DEV2"."T_WRITE_TEST" (
@@ -29,14 +29,17 @@ final class DamengSqlTest {
                   "NAME" VARCHAR(80) DEFAULT 'unknown',
                   PRIMARY KEY ("ID")
                 )""", sql.get(0));
+        assertEquals("COMMENT ON TABLE \"DEV2\".\"T_WRITE_TEST\" IS 'Editable rows'", sql.get(1));
+        assertEquals("COMMENT ON COLUMN \"DEV2\".\"T_WRITE_TEST\".\"ID\" IS 'Primary identifier'", sql.get(2));
+        assertEquals("COMMENT ON COLUMN \"DEV2\".\"T_WRITE_TEST\".\"NAME\" IS 'Display name'", sql.get(3));
     }
 
     @Test
     void altersColumnWithRenameAndModifyStatements() {
         var statements = DamengSql.alterColumnSql(
                 "orders",
-                new ColumnDefinition("name", "VARCHAR(40)", true, false, false, null),
-                new ColumnDefinition("display_name", "VARCHAR(80)", false, false, false, "'n/a'"),
+                new ColumnDefinition("name", "VARCHAR(40)", true, false, false, null, null),
+                new ColumnDefinition("display_name", "VARCHAR(80)", false, false, false, "'n/a'", null),
                 "dev2"
         );
 
@@ -60,9 +63,21 @@ final class DamengSqlTest {
     void rejectsPrimaryKeyAlteration() {
         assertThrows(RpcException.class, () -> DamengSql.alterColumnSql(
                 "orders",
-                new ColumnDefinition("id", "INT", false, false, false, null),
-                new ColumnDefinition("id", "INT", false, true, false, null),
+                new ColumnDefinition("id", "INT", false, false, false, null, null),
+                new ColumnDefinition("id", "INT", false, true, false, null, null),
                 null
         ));
+    }
+
+    @Test
+    void addsColumnCommentStatement() {
+        var statements = DamengSql.addColumnSql(
+                "orders",
+                new ColumnDefinition("memo", "VARCHAR(200)", true, false, false, null, "Operator note"),
+                "dev2"
+        );
+
+        assertEquals("ALTER TABLE \"DEV2\".\"ORDERS\" ADD \"MEMO\" VARCHAR(200)", statements.get(0));
+        assertEquals("COMMENT ON COLUMN \"DEV2\".\"ORDERS\".\"MEMO\" IS 'Operator note'", statements.get(1));
     }
 }

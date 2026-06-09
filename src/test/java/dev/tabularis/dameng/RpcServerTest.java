@@ -19,9 +19,11 @@ final class RpcServerTest {
     void manifestAdvertisesTriggerCapabilityAndVersion() throws Exception {
         var manifest = Json.MAPPER.readTree(Files.readString(Path.of("manifest.json")));
 
-        assertEquals("0.7.0", manifest.path("version").asText());
+        assertEquals("0.8.0", manifest.path("version").asText());
         assertTrue(manifest.path("capabilities").path("triggers").asBoolean());
         assertEquals("DM", manifest.path("name").asText());
+        assertTrue(manifest.path("data_types").findValuesAsText("name").contains("VARBINARY"));
+        assertTrue(manifest.path("data_types").findValuesAsText("name").contains("LONGVARCHAR"));
     }
 
     @Test
@@ -71,6 +73,21 @@ final class RpcServerTest {
         assertEquals(25, response.path("id").asInt());
         assertTrue(response.path("result").isObject());
         assertEquals("ID", response.path("result").path("ORDERS").path(0).path("name").asText());
+        assertEquals("Order primary key", response.path("result").path("ORDERS").path(0).path("comment").asText());
+    }
+
+    @Test
+    void tableMetadataDispatchesWithComments() throws Exception {
+        RpcServer server = new RpcServer(new StubDamengClient());
+
+        var response = Json.MAPPER.readTree(server.handleLine("""
+                {"jsonrpc":"2.0","method":"get_tables","params":{"params":{},"schema":"DEV2"},"id":30}
+                """));
+
+        assertEquals(30, response.path("id").asInt());
+        assertEquals("ORDERS", response.path("result").path(0).path("name").asText());
+        assertEquals("DEV2", response.path("result").path(0).path("schema").asText());
+        assertEquals("Customer orders", response.path("result").path(0).path("comment").asText());
     }
 
     @Test
@@ -118,7 +135,26 @@ final class RpcServerTest {
 
         assertEquals(11, response.path("id").asInt());
         assertEquals("IDX_ORDERS_CUSTOMER", response.path("result").path(0).path("name").asText());
+        assertEquals("IDX_ORDERS_CUSTOMER", response.path("result").path(0).path("index_name").asText());
         assertEquals("CUSTOMER_ID", response.path("result").path(0).path("column_name").asText());
+        assertEquals("CUSTOMER_ID", response.path("result").path(0).path("columns").path(0).asText());
+    }
+
+    @Test
+    void foreignKeyMetadataDispatchesWithCompatibilityFields() throws Exception {
+        RpcServer server = new RpcServer(new StubDamengClient());
+
+        var response = Json.MAPPER.readTree(server.handleLine("""
+                {"jsonrpc":"2.0","method":"get_foreign_keys","params":{"params":{},"schema":"DEV2","table":"ORDERS"},"id":31}
+                """));
+
+        assertEquals(31, response.path("id").asInt());
+        assertEquals("FK_ORDERS_CUSTOMER", response.path("result").path(0).path("name").asText());
+        assertEquals("FK_ORDERS_CUSTOMER", response.path("result").path(0).path("constraint_name").asText());
+        assertEquals("CUSTOMERS", response.path("result").path(0).path("ref_table").asText());
+        assertEquals("CUSTOMERS", response.path("result").path(0).path("referenced_table").asText());
+        assertEquals("ID", response.path("result").path(0).path("ref_column").asText());
+        assertEquals("ID", response.path("result").path(0).path("referenced_column").asText());
     }
 
     @Test
@@ -241,13 +277,15 @@ final class RpcServerTest {
         RpcServer server = new RpcServer(new StubDamengClient());
 
         var response = Json.MAPPER.readTree(server.handleLine("""
-                {"jsonrpc":"2.0","method":"get_create_table_sql","params":{"schema":"DEV2","table_name":"T_WRITE_TEST","columns":[{"name":"ID","data_type":"INT","is_nullable":false,"is_pk":true,"is_auto_increment":true,"default_value":null},{"name":"NAME","data_type":"VARCHAR(80)","is_nullable":true,"is_pk":false,"is_auto_increment":false,"default_value":null}]},"id":21}
+                {"jsonrpc":"2.0","method":"get_create_table_sql","params":{"schema":"DEV2","table_name":"T_WRITE_TEST","comment":"Editable rows","columns":[{"name":"ID","data_type":"INT","is_nullable":false,"is_pk":true,"is_auto_increment":true,"default_value":null,"comment":"Primary identifier"},{"name":"NAME","data_type":"VARCHAR(80)","is_nullable":true,"is_pk":false,"is_auto_increment":false,"default_value":null,"comment":"Display name"}]},"id":21}
                 """));
 
         assertEquals(21, response.path("id").asInt());
         assertTrue(response.path("result").isArray());
         assertTrue(response.path("result").path(0).asText().contains("CREATE TABLE \"DEV2\".\"T_WRITE_TEST\""));
         assertTrue(response.path("result").path(0).asText().contains("IDENTITY(1,1)"));
+        assertEquals("COMMENT ON TABLE \"DEV2\".\"T_WRITE_TEST\" IS 'Editable rows'", response.path("result").path(1).asText());
+        assertEquals("COMMENT ON COLUMN \"DEV2\".\"T_WRITE_TEST\".\"ID\" IS 'Primary identifier'", response.path("result").path(2).asText());
     }
 
     @Test
@@ -283,10 +321,25 @@ final class RpcServerTest {
             var snapshot = Json.NODES.arrayNode();
             var table = Json.NODES.objectNode();
             table.put("name", "CUSTOMERS");
-            table.set("columns", Json.NODES.arrayNode());
+            var columns = Json.NODES.arrayNode();
+            var column = Json.NODES.objectNode();
+            column.put("name", "ID");
+            column.put("comment", "Customer primary key");
+            columns.add(column);
+            table.set("columns", columns);
             table.set("foreign_keys", Json.NODES.arrayNode());
             snapshot.add(table);
             return snapshot;
+        }
+
+        @Override
+        List<Map<String, JsonNode>> getTables(ConnectionParams params, String schema) {
+            assertEquals("DEV2", schema);
+            Map<String, JsonNode> table = new LinkedHashMap<>();
+            table.put("name", Json.NODES.textNode("ORDERS"));
+            table.put("schema", Json.NODES.textNode("DEV2"));
+            table.put("comment", Json.NODES.textNode("Customer orders"));
+            return List.of(table);
         }
 
         @Override
@@ -302,6 +355,7 @@ final class RpcServerTest {
             column.put("is_pk", true);
             column.put("is_nullable", false);
             column.put("is_auto_increment", true);
+            column.put("comment", "Order primary key");
             columns.add(column);
             result.set("ORDERS", columns);
             return result;
@@ -314,9 +368,12 @@ final class RpcServerTest {
             var keys = Json.NODES.arrayNode();
             var key = Json.NODES.objectNode();
             key.put("name", "FK_ORDERS_CUSTOMER");
+            key.put("constraint_name", "FK_ORDERS_CUSTOMER");
             key.put("column_name", "CUSTOMER_ID");
             key.put("ref_table", "CUSTOMERS");
+            key.put("referenced_table", "CUSTOMERS");
             key.put("ref_column", "ID");
+            key.put("referenced_column", "ID");
             key.set("on_delete", Json.NODES.nullNode());
             key.set("on_update", Json.NODES.nullNode());
             keys.add(key);
@@ -335,11 +392,32 @@ final class RpcServerTest {
         List<Map<String, JsonNode>> getIndexes(ConnectionParams params, String table, String schema) {
             Map<String, JsonNode> index = new LinkedHashMap<>();
             index.put("name", Json.NODES.textNode("IDX_ORDERS_CUSTOMER"));
+            index.put("index_name", Json.NODES.textNode("IDX_ORDERS_CUSTOMER"));
             index.put("column_name", Json.NODES.textNode("CUSTOMER_ID"));
+            var columns = Json.NODES.arrayNode();
+            columns.add("CUSTOMER_ID");
+            index.put("columns", columns);
             index.put("is_unique", Json.NODES.booleanNode(false));
             index.put("is_primary", Json.NODES.booleanNode(false));
             index.put("seq_in_index", Json.NODES.numberNode(1));
             return List.of(index);
+        }
+
+        @Override
+        List<Map<String, JsonNode>> getForeignKeys(ConnectionParams params, String table, String schema) {
+            assertEquals("ORDERS", table);
+            assertEquals("DEV2", schema);
+            Map<String, JsonNode> key = new LinkedHashMap<>();
+            key.put("name", Json.NODES.textNode("FK_ORDERS_CUSTOMER"));
+            key.put("constraint_name", Json.NODES.textNode("FK_ORDERS_CUSTOMER"));
+            key.put("column_name", Json.NODES.textNode("CUSTOMER_ID"));
+            key.put("ref_table", Json.NODES.textNode("CUSTOMERS"));
+            key.put("referenced_table", Json.NODES.textNode("CUSTOMERS"));
+            key.put("ref_column", Json.NODES.textNode("ID"));
+            key.put("referenced_column", Json.NODES.textNode("ID"));
+            key.put("on_delete", Json.NODES.nullNode());
+            key.put("on_update", Json.NODES.nullNode());
+            return List.of(key);
         }
 
         @Override

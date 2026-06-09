@@ -103,21 +103,28 @@ class DamengClient {
         }
     }
 
-    List<String> getTables(ConnectionParams params, String schema) throws SQLException {
+    List<Map<String, JsonNode>> getTables(ConnectionParams params, String schema) throws SQLException {
         try (Connection conn = connect(params)) {
             String owner = resolveSchema(conn, schema);
             try (PreparedStatement stmt = conn.prepareStatement("""
-                    SELECT TABLE_NAME
-                    FROM ALL_TABLES
-                    WHERE OWNER = ?
-                    ORDER BY TABLE_NAME
+                    SELECT t.TABLE_NAME, c.COMMENTS
+                    FROM ALL_TABLES t
+                    LEFT JOIN ALL_TAB_COMMENTS c
+                      ON c.OWNER = t.OWNER
+                     AND c.TABLE_NAME = t.TABLE_NAME
+                    WHERE t.OWNER = ?
+                    ORDER BY t.TABLE_NAME
                     """)) {
                 stmt.setQueryTimeout(settings().queryTimeoutSec());
                 stmt.setString(1, owner);
                 try (ResultSet rs = stmt.executeQuery()) {
-                    List<String> tables = new ArrayList<>();
+                    List<Map<String, JsonNode>> tables = new ArrayList<>();
                     while (rs.next()) {
-                        tables.add(rs.getString(1));
+                        Map<String, JsonNode> item = new LinkedHashMap<>();
+                        item.put("name", Json.NODES.textNode(rs.getString("TABLE_NAME")));
+                        item.put("schema", Json.NODES.textNode(owner));
+                        item.put("comment", nullableText(rs.getString("COMMENTS")));
+                        tables.add(item);
                     }
                     return tables;
                 }
@@ -162,7 +169,11 @@ class DamengClient {
                     while (rs.next()) {
                         Map<String, JsonNode> item = new LinkedHashMap<>();
                         item.put("name", Json.NODES.textNode(rs.getString("INDEX_NAME")));
+                        item.put("index_name", Json.NODES.textNode(rs.getString("INDEX_NAME")));
                         item.put("column_name", Json.NODES.textNode(rs.getString("COLUMN_NAME")));
+                        ArrayNode indexColumns = Json.NODES.arrayNode();
+                        indexColumns.add(rs.getString("COLUMN_NAME"));
+                        item.put("columns", indexColumns);
                         item.put("is_unique", Json.NODES.booleanNode("UNIQUE".equalsIgnoreCase(rs.getString("UNIQUENESS"))));
                         item.put("is_primary", Json.NODES.booleanNode(rs.getInt("IS_PRIMARY") == 1));
                         item.put("seq_in_index", Json.NODES.numberNode(rs.getInt("COLUMN_POSITION")));
@@ -197,6 +208,7 @@ class DamengClient {
                     while (rs.next()) {
                         Map<String, JsonNode> item = new LinkedHashMap<>();
                         item.put("name", Json.NODES.textNode(rs.getString("VIEW_NAME")));
+                        item.put("schema", Json.NODES.textNode(owner));
                         item.put("definition", Json.NODES.nullNode());
                         views.add(item);
                     }
@@ -237,7 +249,7 @@ class DamengClient {
         try (Connection conn = connect(params)) {
             String owner = resolveSchema(conn, schema);
             ObjectNode result = Json.NODES.objectNode();
-            for (String table : requestedTables(getTables(conn, owner), requestedTables)) {
+            for (String table : requestedTables(getTableNames(conn, owner), requestedTables)) {
                 result.set(table, columnsArray(getColumns(conn, owner, table)));
             }
             return result;
@@ -248,7 +260,7 @@ class DamengClient {
         try (Connection conn = connect(params)) {
             String owner = resolveSchema(conn, schema);
             ObjectNode result = Json.NODES.objectNode();
-            for (String table : requestedTables(getTables(conn, owner), requestedTables)) {
+            for (String table : requestedTables(getTableNames(conn, owner), requestedTables)) {
                 result.set(table, columnsArray(getForeignKeys(conn, owner, table)));
             }
             return result;
@@ -259,7 +271,7 @@ class DamengClient {
         try (Connection conn = connect(params)) {
             String owner = resolveSchema(conn, schema);
             ArrayNode snapshot = Json.NODES.arrayNode();
-            for (String table : getTables(conn, owner)) {
+            for (String table : getTableNames(conn, owner)) {
                 ObjectNode item = Json.NODES.objectNode();
                 item.put("name", table);
                 item.set("columns", columnsArray(getColumns(conn, owner, table)));
@@ -588,7 +600,7 @@ class DamengClient {
         }
     }
 
-    private List<String> getTables(Connection conn, String owner) throws SQLException {
+    private List<String> getTableNames(Connection conn, String owner) throws SQLException {
         try (PreparedStatement stmt = conn.prepareStatement("""
                 SELECT TABLE_NAME
                 FROM ALL_TABLES
@@ -624,6 +636,7 @@ class DamengClient {
     }
 
     private List<Map<String, JsonNode>> getColumns(Connection conn, String owner, String table) throws SQLException {
+        Set<String> autoIncrementColumns = autoIncrementColumns(conn, owner, table);
         try (PreparedStatement stmt = conn.prepareStatement("""
                 SELECT
                     c.COLUMN_NAME,
@@ -631,8 +644,13 @@ class DamengClient {
                     c.NULLABLE,
                     c.DATA_DEFAULT,
                     c.CHAR_LENGTH,
+                    cc.COMMENTS,
                     CASE WHEN pk.COLUMN_NAME IS NULL THEN 0 ELSE 1 END AS IS_PK
                 FROM ALL_TAB_COLUMNS c
+                LEFT JOIN ALL_COL_COMMENTS cc
+                  ON cc.OWNER = c.OWNER
+                 AND cc.TABLE_NAME = c.TABLE_NAME
+                 AND cc.COLUMN_NAME = c.COLUMN_NAME
                 LEFT JOIN (
                     SELECT acc.OWNER, acc.TABLE_NAME, acc.COLUMN_NAME
                     FROM ALL_CONSTRAINTS ac
@@ -659,16 +677,32 @@ class DamengClient {
                     item.put("data_type", Json.NODES.textNode(rs.getString("DATA_TYPE")));
                     item.put("is_pk", Json.NODES.booleanNode(rs.getInt("IS_PK") == 1));
                     item.put("is_nullable", Json.NODES.booleanNode("Y".equalsIgnoreCase(rs.getString("NULLABLE"))));
-                    item.put("is_auto_increment", Json.NODES.booleanNode(false));
+                    item.put("is_auto_increment", Json.NODES.booleanNode(autoIncrementColumns.contains(rs.getString("COLUMN_NAME"))));
                     String defaultValue = rs.getString("DATA_DEFAULT");
                     item.put("default_value", defaultValue == null ? Json.NODES.nullNode() : Json.NODES.textNode(defaultValue.strip()));
                     long charLength = rs.getLong("CHAR_LENGTH");
                     item.put("character_maximum_length", rs.wasNull() || charLength <= 0 ? Json.NODES.nullNode() : Json.NODES.numberNode(charLength));
+                    item.put("comment", nullableText(rs.getString("COMMENTS")));
                     columns.add(item);
                 }
                 return columns;
             }
         }
+    }
+
+    private static Set<String> autoIncrementColumns(Connection conn, String owner, String table) {
+        Set<String> columns = new LinkedHashSet<>();
+        try (ResultSet rs = conn.getMetaData().getColumns(null, owner, normalizeIdentifier(table), null)) {
+            while (rs.next()) {
+                String value = rs.getString("IS_AUTOINCREMENT");
+                if (isTruthy(value)) {
+                    columns.add(rs.getString("COLUMN_NAME"));
+                }
+            }
+        } catch (SQLException ignored) {
+            return Set.of();
+        }
+        return columns;
     }
 
     private List<Map<String, JsonNode>> getForeignKeys(Connection conn, String owner, String table) throws SQLException {
@@ -703,9 +737,12 @@ class DamengClient {
                 while (rs.next()) {
                     Map<String, JsonNode> item = new LinkedHashMap<>();
                     item.put("name", Json.NODES.textNode(rs.getString("CONSTRAINT_NAME")));
+                    item.put("constraint_name", Json.NODES.textNode(rs.getString("CONSTRAINT_NAME")));
                     item.put("column_name", Json.NODES.textNode(rs.getString("COLUMN_NAME")));
                     item.put("ref_table", Json.NODES.textNode(rs.getString("REF_TABLE")));
+                    item.put("referenced_table", Json.NODES.textNode(rs.getString("REF_TABLE")));
                     item.put("ref_column", Json.NODES.textNode(rs.getString("REF_COLUMN")));
+                    item.put("referenced_column", Json.NODES.textNode(rs.getString("REF_COLUMN")));
                     item.put("on_delete", nullableText(normalizeForeignKeyAction(rs.getString("DELETE_RULE"))));
                     item.put("on_update", Json.NODES.nullNode());
                     fks.add(item);
@@ -1005,6 +1042,17 @@ class DamengClient {
         }
         String value = node.asText();
         return value == null || value.isBlank() ? null : value;
+    }
+
+    private static boolean isTruthy(String value) {
+        if (value == null || value.isBlank()) {
+            return false;
+        }
+        String normalized = value.strip().toUpperCase(Locale.ROOT);
+        return "YES".equals(normalized)
+                || "Y".equals(normalized)
+                || "TRUE".equals(normalized)
+                || "1".equals(normalized);
     }
 
     private PluginSettings settings() {

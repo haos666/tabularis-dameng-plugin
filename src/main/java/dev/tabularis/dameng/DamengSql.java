@@ -44,7 +44,7 @@ final class DamengSql {
         return sql.toString();
     }
 
-    static List<String> createTableSql(String tableName, List<ColumnDefinition> columns, String schema) {
+    static List<String> createTableSql(String tableName, List<ColumnDefinition> columns, String schema, String tableComment) {
         if (columns.isEmpty()) {
             throw new RpcException(-32602, "At least one column is required.");
         }
@@ -60,13 +60,22 @@ final class DamengSql {
         if (!primaryKeys.isEmpty()) {
             definitions.add("PRIMARY KEY (" + String.join(", ", primaryKeys) + ")");
         }
-        return List.of("CREATE TABLE " + qualifiedName(tableName, schema) + " (\n  "
+        List<String> statements = new ArrayList<>();
+        String qualifiedTable = qualifiedName(tableName, schema);
+        statements.add("CREATE TABLE " + qualifiedTable + " (\n  "
                 + String.join(",\n  ", definitions) + "\n)");
+        appendTableComment(statements, qualifiedTable, tableComment);
+        appendColumnComments(statements, qualifiedTable, columns);
+        return statements;
     }
 
     static List<String> addColumnSql(String table, ColumnDefinition column, String schema) {
-        return List.of("ALTER TABLE " + qualifiedName(table, schema)
+        String qualifiedTable = qualifiedName(table, schema);
+        List<String> statements = new ArrayList<>();
+        statements.add("ALTER TABLE " + qualifiedTable
                 + " ADD " + columnDefinition(column, column.primaryKey()));
+        appendColumnComment(statements, qualifiedTable, column);
+        return statements;
     }
 
     static List<String> alterColumnSql(String table, ColumnDefinition oldColumn, ColumnDefinition newColumn, String schema) {
@@ -183,6 +192,29 @@ final class DamengSql {
         if (!"NO ACTION".equals(normalized)) {
             sql.append(keyword).append(normalized);
         }
+    }
+
+    private static void appendTableComment(List<String> statements, String qualifiedTable, String comment) {
+        if (comment != null && !comment.isBlank()) {
+            statements.add("COMMENT ON TABLE " + qualifiedTable + " IS " + sqlString(comment));
+        }
+    }
+
+    private static void appendColumnComments(List<String> statements, String qualifiedTable, List<ColumnDefinition> columns) {
+        for (ColumnDefinition column : columns) {
+            appendColumnComment(statements, qualifiedTable, column);
+        }
+    }
+
+    private static void appendColumnComment(List<String> statements, String qualifiedTable, ColumnDefinition column) {
+        if (column.comment() != null && !column.comment().isBlank()) {
+            statements.add("COMMENT ON COLUMN " + qualifiedTable + "." + quoteIdentifier(column.name())
+                    + " IS " + sqlString(column.comment()));
+        }
+    }
+
+    private static String sqlString(String value) {
+        return "'" + value.replace("'", "''") + "'";
     }
 
     private static List<String> splitQualifiedName(String value) {

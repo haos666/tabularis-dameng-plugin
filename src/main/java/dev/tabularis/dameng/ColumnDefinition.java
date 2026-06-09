@@ -8,7 +8,8 @@ record ColumnDefinition(
         boolean nullable,
         boolean primaryKey,
         boolean autoIncrement,
-        String defaultValue
+        String defaultValue,
+        String comment
 ) {
     static ColumnDefinition from(JsonNode node) {
         String name = text(node.path("name"));
@@ -25,7 +26,8 @@ record ColumnDefinition(
                 node.path("is_nullable").asBoolean(true),
                 node.path("is_pk").asBoolean(false),
                 node.path("is_auto_increment").asBoolean(false),
-                text(node.path("default_value"))
+                text(node.path("default_value")),
+                text(node.path("comment"))
         );
     }
 

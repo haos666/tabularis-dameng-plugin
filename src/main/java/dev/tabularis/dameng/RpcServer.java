@@ -59,7 +59,7 @@ final class RpcServer {
             }
             case "get_databases" -> arrayOfStrings(client.getSchemas(connectionParams(params)));
             case "get_schemas" -> arrayOfStrings(client.getSchemas(connectionParams(params)));
-            case "get_tables" -> tables(client.getTables(connectionParams(params), text(params.path("schema"))));
+            case "get_tables" -> columns(client.getTables(connectionParams(params), text(params.path("schema"))));
             case "get_columns" -> columns(client.getColumns(connectionParams(params), requiredText(params, "table"), text(params.path("schema"))));
             case "get_indexes" -> columns(client.getIndexes(connectionParams(params), requiredText(params, "table"), text(params.path("schema"))));
             case "get_foreign_keys" -> columns(client.getForeignKeys(connectionParams(params), requiredText(params, "table"), text(params.path("schema"))));
@@ -163,7 +163,8 @@ final class RpcServer {
             case "get_create_table_sql" -> DamengSql.toArray(DamengSql.createTableSql(
                     requiredText(params, "table_name"),
                     DamengSql.columnDefinitions(params.path("columns")),
-                    text(params.path("schema"))
+                    text(params.path("schema")),
+                    text(params.path("comment")) == null ? text(params.path("table_comment")) : text(params.path("comment"))
             ));
             case "get_add_column_sql" -> DamengSql.toArray(DamengSql.addColumnSql(
                     requiredText(params, "table"),
@@ -248,16 +249,6 @@ final class RpcServer {
         ArrayNode array = Json.NODES.arrayNode();
         for (String item : items) {
             array.add(item);
-        }
-        return array;
-    }
-
-    private static ArrayNode tables(List<String> items) {
-        ArrayNode array = Json.NODES.arrayNode();
-        for (String item : items) {
-            ObjectNode table = Json.NODES.objectNode();
-            table.put("name", item);
-            array.add(table);
         }
         return array;
     }

@@ -1,4 +1,4 @@
 @echo off
 setlocal
 set "DIR=%~dp0"
-java -jar "%DIR%target\tabularis-dameng-plugin-0.7.0.jar"
+java -jar "%DIR%target\tabularis-dameng-plugin-0.8.0.jar"
