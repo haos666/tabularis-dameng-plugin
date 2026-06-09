@@ -100,7 +100,8 @@ final class RpcServer {
                     connectionParams(params),
                     requiredText(params, "query"),
                     optionalInt(params.path("limit")),
-                    intValue(params.path("page"), 1)
+                    intValue(params.path("page"), 1),
+                    text(params.path("schema"))
             );
             case "explain_query" -> client.explainQuery(
                     connectionParams(params),
@@ -108,10 +109,91 @@ final class RpcServer {
                     booleanValue(params.path("analyze")),
                     text(params.path("schema"))
             );
-            case "insert_record", "update_record", "delete_record",
-                    "get_create_table_sql", "get_add_column_sql", "get_alter_column_sql",
-                    "get_create_index_sql", "get_create_foreign_key_sql",
-                    "drop_index", "drop_foreign_key", "create_view", "alter_view", "drop_view" -> throw new RpcException(-32601, "method '" + method + "' is not implemented by the read-only Dameng plugin");
+            case "insert_record" -> Json.NODES.numberNode(client.insertRecord(
+                    connectionParams(params),
+                    requiredText(params, "table"),
+                    params.path("data"),
+                    text(params.path("schema")),
+                    longValue(params.path("max_blob_size"), 0)
+            ));
+            case "update_record" -> Json.NODES.numberNode(client.updateRecord(
+                    connectionParams(params),
+                    requiredText(params, "table"),
+                    requiredText(params, "pk_col"),
+                    params.path("pk_val"),
+                    requiredText(params, "col_name"),
+                    params.path("new_val"),
+                    text(params.path("schema")),
+                    longValue(params.path("max_blob_size"), 0)
+            ));
+            case "delete_record" -> Json.NODES.numberNode(client.deleteRecord(
+                    connectionParams(params),
+                    requiredText(params, "table"),
+                    requiredText(params, "pk_col"),
+                    params.path("pk_val"),
+                    text(params.path("schema"))
+            ));
+            case "create_view" -> {
+                client.createView(connectionParams(params), requiredText(params, "view_name"), requiredText(params, "definition"), text(params.path("schema")));
+                yield Json.NODES.nullNode();
+            }
+            case "alter_view" -> {
+                client.alterView(connectionParams(params), requiredText(params, "view_name"), requiredText(params, "definition"), text(params.path("schema")));
+                yield Json.NODES.nullNode();
+            }
+            case "drop_view" -> {
+                client.dropView(connectionParams(params), requiredText(params, "view_name"), text(params.path("schema")));
+                yield Json.NODES.nullNode();
+            }
+            case "get_create_table_sql" -> DamengSql.toArray(DamengSql.createTableSql(
+                    requiredText(params, "table_name"),
+                    DamengSql.columnDefinitions(params.path("columns")),
+                    text(params.path("schema"))
+            ));
+            case "get_add_column_sql" -> DamengSql.toArray(DamengSql.addColumnSql(
+                    requiredText(params, "table"),
+                    ColumnDefinition.from(params.path("column")),
+                    text(params.path("schema"))
+            ));
+            case "get_alter_column_sql" -> DamengSql.toArray(DamengSql.alterColumnSql(
+                    requiredText(params, "table"),
+                    ColumnDefinition.from(params.path("old_column")),
+                    ColumnDefinition.from(params.path("new_column")),
+                    text(params.path("schema"))
+            ));
+            case "get_create_index_sql" -> DamengSql.toArray(DamengSql.createIndexSql(
+                    requiredText(params, "table"),
+                    requiredText(params, "index_name"),
+                    DamengSql.columns(params.path("columns")),
+                    booleanValue(params.path("is_unique")),
+                    text(params.path("schema"))
+            ));
+            case "get_create_foreign_key_sql" -> DamengSql.toArray(DamengSql.createForeignKeySql(
+                    requiredText(params, "table"),
+                    requiredText(params, "fk_name"),
+                    requiredText(params, "column"),
+                    requiredText(params, "ref_table"),
+                    requiredText(params, "ref_column"),
+                    text(params.path("on_delete")),
+                    text(params.path("on_update")),
+                    text(params.path("schema"))
+            ));
+            case "drop_index" -> {
+                client.dropIndex(connectionParams(params), requiredText(params, "table"), requiredText(params, "index_name"), text(params.path("schema")));
+                yield Json.NODES.nullNode();
+            }
+            case "drop_foreign_key" -> {
+                client.dropForeignKey(connectionParams(params), requiredText(params, "table"), requiredText(params, "fk_name"), text(params.path("schema")));
+                yield Json.NODES.nullNode();
+            }
+            case "create_trigger" -> {
+                client.createTrigger(connectionParams(params), requiredText(params, "trigger_sql"), text(params.path("schema")));
+                yield Json.NODES.nullNode();
+            }
+            case "drop_trigger" -> {
+                client.dropTrigger(connectionParams(params), requiredText(params, "trigger_name"), text(params.path("table_name")), text(params.path("schema")));
+                yield Json.NODES.nullNode();
+            }
             default -> throw new RpcException(-32601, "method '" + method + "' is not implemented");
         };
     }
@@ -207,5 +289,12 @@ final class RpcServer {
 
     private static boolean booleanValue(JsonNode node) {
         return node != null && !node.isMissingNode() && !node.isNull() && node.asBoolean(false);
+    }
+
+    private static long longValue(JsonNode node, long fallback) {
+        if (node == null || node.isMissingNode() || node.isNull()) {
+            return fallback;
+        }
+        return node.asLong(fallback);
     }
 }

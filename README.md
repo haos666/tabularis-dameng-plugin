@@ -1,6 +1,6 @@
 # Tabularis DM Plugin
 
-Read-only [DM / Dameng](https://www.dameng.com/) database driver plugin for [Tabularis](https://github.com/TabularisDB/tabularis).
+[DM / Dameng](https://www.dameng.com/) database driver plugin for [Tabularis](https://github.com/TabularisDB/tabularis).
 
 This plugin runs as a standalone Java process and talks to Tabularis through JSON-RPC 2.0 over stdin/stdout. It loads the official Dameng JDBC driver from a local path configured by the user. Dameng JDBC binaries are not redistributed in this repository or in release artifacts.
 
@@ -17,11 +17,14 @@ This plugin runs as a standalone Java process and talks to Tabularis through JSO
 - Pre-implement trigger metadata RPCs for future Tabularis plugin bridge support
 - Return batch column and foreign key metadata for faster browsing
 - Return schema snapshots for Tabularis ER diagrams
-- Execute read-only SQL queries
+- Execute SQL queries, DML, and DDL from the SQL editor
+- Insert, update, and delete rows through Tabularis row editing
+- Generate table, column, index, and foreign-key management SQL
+- Create, alter, and drop views
+- Drop indexes and foreign keys
 - Return Tabularis-compatible result sets
-- Refuse write, CRUD, and DDL operations
 
-This is still a read-only driver. Routine execution, triggers, write operations, DDL, table management, view management, and UI extensions are intentionally out of scope.
+Routine execution and routine management are still out of scope. Trigger create/drop RPCs are implemented in the plugin, but current Tabularis external plugin adapter versions do not forward them yet, so trigger editing may not be reachable from the UI.
 
 ## Requirements
 
@@ -46,7 +49,7 @@ chmod +x dameng-plugin
 The executable jar is written to:
 
 ```text
-target/tabularis-dameng-plugin-0.4.0.jar
+target/tabularis-dameng-plugin-0.5.0.jar
 ```
 
 ## Install Locally
@@ -64,7 +67,7 @@ PLUGIN_DIR="$HOME/Library/Application Support/com.debba.tabularis/plugins/dameng
 
 mkdir -p "$PLUGIN_DIR/target"
 cp manifest.json dameng-plugin dameng-plugin.bat "$PLUGIN_DIR/"
-cp target/tabularis-dameng-plugin-0.4.0.jar "$PLUGIN_DIR/target/"
+cp target/tabularis-dameng-plugin-0.5.0.jar "$PLUGIN_DIR/target/"
 chmod +x "$PLUGIN_DIR/dameng-plugin"
 ```
 
@@ -108,14 +111,14 @@ Schema selection is handled separately through Tabularis.
 
 For local validation, the `DEV2` schema in the Dameng Docker instance was populated with a small sales dataset:
 
-- Tables: `CUSTOMERS`, `PRODUCTS`, `ORDERS`, `ORDER_ITEMS`
+- Tables: `CUSTOMERS`, `PRODUCTS`, `ORDERS`, `ORDER_ITEMS`, `ORDER_AUDIT`, `T_WRITE_TEST`
 - Foreign keys: orders to customers, order items to orders, and order items to products
 - Indexes: customer/order/product lookup indexes plus `UX_PRODUCTS_SKU`
 - Views: `V_ORDER_SUMMARY`, `V_ORDER_DETAIL`, `V_CUSTOMER_LIFETIME_VALUE`, `V_PRODUCT_SALES`
 - Routines: `FN_CUSTOMER_ORDER_COUNT`, `FN_CUSTOMER_TOTAL_AMOUNT`, `P_REFRESH_ORDER_STATS`
 - Trigger: `TRG_ORDERS_AUDIT`
 
-Tabularis has been verified locally with this dataset: schemas, tables, columns, indexes, foreign keys, views, view columns, view queries, routines, routine parameters, Visual Explain, and ER metadata all render through the `DM` plugin.
+Tabularis has been verified locally with this dataset: schemas, tables, columns, indexes, foreign keys, views, view columns, view queries, routines, routine parameters, Visual Explain, ER metadata, SQL writes, row editing, and view/index/FK management paths all work through the `DM` plugin.
 
 The reusable setup script is available at `docs/demo-schema.sql`.
 
@@ -124,21 +127,21 @@ The reusable setup script is available at `docs/demo-schema.sql`.
 - stdout is reserved for JSON-RPC responses only.
 - logs and diagnostics go to stderr.
 - `initialize` loads `dm.jdbc.driver.DmDriver` through `URLClassLoader`.
-- `execute_query` only accepts SQL starting with `SELECT`, `WITH`, or `EXPLAIN`.
+- `execute_query` accepts SQL editor writes and DDL in v0.5.0. Result-set statements return rows; non-result statements return `affected_rows`.
 - `get_databases` returns visible schemas so the Tabularis connection dialog has a useful value for "Load Databases".
 - `get_schema_snapshot` returns tables, columns, and foreign keys for Tabularis ER diagrams.
-- `get_views`, `get_view_definition`, and `get_view_columns` are read-only inspection helpers.
+- `get_views`, `get_view_definition`, and `get_view_columns` inspect views; `create_view`, `alter_view`, and `drop_view` manage views.
 - `get_routines` and `get_routine_parameters` expose read-only stored function/procedure metadata.
 - routine definitions use `ALL_SOURCE` when available; otherwise the plugin returns a generated signature.
 - `explain_query` uses Dameng `EXPLAIN FOR`, parses JDBC plan rows into Tabularis' `ExplainPlan` tree, and preserves raw plan rows. The older text EXPLAIN parser is kept as a fallback.
-- `get_triggers` and `get_trigger_definition` are implemented by the plugin, but current Tabularis external plugin driver versions may not call them until trigger RPC forwarding is added upstream.
+- `get_triggers` and `get_trigger_definition` are implemented. `create_trigger` and `drop_trigger` are also implemented plugin-side, but current Tabularis external plugin driver versions may not call trigger write RPCs until forwarding is added upstream.
 
 ## Release Packaging
 
 Release artifacts are named like:
 
 ```text
-tabularis-dameng-plugin-0.4.0.zip
+tabularis-dameng-plugin-0.5.0.zip
 ```
 
 The zip should include:
@@ -147,7 +150,7 @@ The zip should include:
 dameng-plugin
 dameng-plugin.bat
 manifest.json
-target/tabularis-dameng-plugin-0.4.0.jar
+target/tabularis-dameng-plugin-0.5.0.jar
 ```
 
 Do not include:

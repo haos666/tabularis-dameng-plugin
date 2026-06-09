@@ -154,6 +154,54 @@ final class RpcServerTest {
     }
 
     @Test
+    void crudMethodsDispatchToMetadataClient() throws Exception {
+        RpcServer server = new RpcServer(new StubDamengClient());
+
+        var insert = Json.MAPPER.readTree(server.handleLine("""
+                {"jsonrpc":"2.0","method":"insert_record","params":{"params":{},"schema":"DEV2","table":"T_WRITE_TEST","data":{"name":"Alice","score":7}},"id":18}
+                """));
+        var update = Json.MAPPER.readTree(server.handleLine("""
+                {"jsonrpc":"2.0","method":"update_record","params":{"params":{},"schema":"DEV2","table":"T_WRITE_TEST","pk_col":"ID","pk_val":1,"col_name":"NAME","new_val":"Bob"},"id":19}
+                """));
+        var delete = Json.MAPPER.readTree(server.handleLine("""
+                {"jsonrpc":"2.0","method":"delete_record","params":{"params":{},"schema":"DEV2","table":"T_WRITE_TEST","pk_col":"ID","pk_val":1},"id":20}
+                """));
+
+        assertEquals(1, insert.path("result").asInt());
+        assertEquals(1, update.path("result").asInt());
+        assertEquals(1, delete.path("result").asInt());
+    }
+
+    @Test
+    void ddlPreviewMethodsReturnStatementArrays() throws Exception {
+        RpcServer server = new RpcServer(new StubDamengClient());
+
+        var response = Json.MAPPER.readTree(server.handleLine("""
+                {"jsonrpc":"2.0","method":"get_create_table_sql","params":{"schema":"DEV2","table_name":"T_WRITE_TEST","columns":[{"name":"ID","data_type":"INT","is_nullable":false,"is_pk":true,"is_auto_increment":true,"default_value":null},{"name":"NAME","data_type":"VARCHAR(80)","is_nullable":true,"is_pk":false,"is_auto_increment":false,"default_value":null}]},"id":21}
+                """));
+
+        assertEquals(21, response.path("id").asInt());
+        assertTrue(response.path("result").isArray());
+        assertTrue(response.path("result").path(0).asText().contains("CREATE TABLE \"DEV2\".\"T_WRITE_TEST\""));
+        assertTrue(response.path("result").path(0).asText().contains("IDENTITY(1,1)"));
+    }
+
+    @Test
+    void viewAndTriggerWriteMethodsDispatchToMetadataClient() throws Exception {
+        RpcServer server = new RpcServer(new StubDamengClient());
+
+        var view = Json.MAPPER.readTree(server.handleLine("""
+                {"jsonrpc":"2.0","method":"create_view","params":{"params":{},"schema":"DEV2","view_name":"V_WRITE_TEST","definition":"SELECT 1 AS ID"},"id":22}
+                """));
+        var trigger = Json.MAPPER.readTree(server.handleLine("""
+                {"jsonrpc":"2.0","method":"create_trigger","params":{"params":{},"schema":"DEV2","trigger_sql":"CREATE TRIGGER TRG_WRITE_TEST AFTER UPDATE ON T_WRITE_TEST BEGIN NULL; END;"},"id":23}
+                """));
+
+        assertTrue(view.path("result").isNull());
+        assertTrue(trigger.path("result").isNull());
+    }
+
+    @Test
     void jdbcMethodsFailClearlyBeforeInitialize() throws Exception {
         RpcServer server = new RpcServer(new DamengClient());
 
@@ -273,6 +321,47 @@ final class RpcServerTest {
             assertEquals("ORDERS", tableName);
             assertEquals("DEV2", schema);
             return "TRIGGER TRG_ORDERS_AUDIT AFTER UPDATE ON ORDERS";
+        }
+
+        @Override
+        long insertRecord(ConnectionParams params, String table, JsonNode data, String schema, long maxBlobSize) {
+            assertEquals("T_WRITE_TEST", table);
+            assertEquals("Alice", data.path("name").asText());
+            assertEquals("DEV2", schema);
+            return 1;
+        }
+
+        @Override
+        long updateRecord(ConnectionParams params, String table, String pkCol, JsonNode pkVal, String colName, JsonNode newVal, String schema, long maxBlobSize) {
+            assertEquals("T_WRITE_TEST", table);
+            assertEquals("ID", pkCol);
+            assertEquals(1, pkVal.asInt());
+            assertEquals("NAME", colName);
+            assertEquals("Bob", newVal.asText());
+            assertEquals("DEV2", schema);
+            return 1;
+        }
+
+        @Override
+        long deleteRecord(ConnectionParams params, String table, String pkCol, JsonNode pkVal, String schema) {
+            assertEquals("T_WRITE_TEST", table);
+            assertEquals("ID", pkCol);
+            assertEquals(1, pkVal.asInt());
+            assertEquals("DEV2", schema);
+            return 1;
+        }
+
+        @Override
+        void createView(ConnectionParams params, String viewName, String definition, String schema) {
+            assertEquals("V_WRITE_TEST", viewName);
+            assertEquals("SELECT 1 AS ID", definition);
+            assertEquals("DEV2", schema);
+        }
+
+        @Override
+        void createTrigger(ConnectionParams params, String triggerSql, String schema) {
+            assertTrue(triggerSql.contains("TRG_WRITE_TEST"));
+            assertEquals("DEV2", schema);
         }
     }
 }

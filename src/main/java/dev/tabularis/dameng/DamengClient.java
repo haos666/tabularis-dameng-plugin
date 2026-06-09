@@ -401,26 +401,104 @@ class DamengClient {
         }
     }
 
-    ObjectNode executeQuery(ConnectionParams params, String query, Integer limit, int page) throws SQLException {
-        SqlSafety.requireReadOnly(query);
-        String finalQuery = limit == null ? query : QueryPaginator.paginated(query, limit, page);
-        try (Connection conn = connect(params);
+    ObjectNode executeQuery(ConnectionParams params, String query, Integer limit, int page, String schema) throws SQLException {
+        SqlSafety.requireNotEmpty(query);
+        boolean paginate = limit != null && SqlSafety.isReadOnlyQuery(query);
+        String finalQuery = paginate ? QueryPaginator.paginated(query, limit, page) : query;
+        try (Connection conn = connect(params, false);
              Statement stmt = conn.createStatement()) {
+            applySchema(conn, schema);
             stmt.setQueryTimeout(settings().queryTimeoutSec());
             boolean hasResultSet = stmt.execute(finalQuery);
             if (!hasResultSet) {
+                int affectedRows = stmt.getUpdateCount();
                 ObjectNode result = Json.NODES.objectNode();
                 result.set("columns", Json.NODES.arrayNode());
                 result.set("rows", Json.NODES.arrayNode());
-                result.put("affected_rows", 0);
+                result.put("affected_rows", Math.max(affectedRows, 0));
                 result.put("truncated", false);
                 result.set("pagination", Json.NODES.nullNode());
                 return result;
             }
             try (ResultSet rs = stmt.getResultSet()) {
-                return ResultSetJson.toQueryResult(rs, limit, page);
+                return ResultSetJson.toQueryResult(rs, paginate ? limit : null, page);
             }
         }
+    }
+
+    long insertRecord(ConnectionParams params, String table, JsonNode data, String schema, long maxBlobSize) throws SQLException {
+        if (data == null || !data.isObject() || data.isEmpty()) {
+            throw new RpcException(-32602, "insert_record requires non-empty object 'data'.");
+        }
+        List<String> columns = new ArrayList<>();
+        data.fieldNames().forEachRemaining(columns::add);
+        String placeholders = "?,".repeat(columns.size());
+        placeholders = placeholders.substring(0, placeholders.length() - 1);
+        String sql = "INSERT INTO " + DamengSql.qualifiedName(table, schema)
+                + " (" + columns.stream().map(DamengSql::quoteIdentifier).reduce((a, b) -> a + ", " + b).orElse("") + ")"
+                + " VALUES (" + placeholders + ")";
+
+        try (Connection conn = connect(params, false);
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setQueryTimeout(settings().queryTimeoutSec());
+            for (int i = 0; i < columns.size(); i++) {
+                JdbcJson.bind(stmt, i + 1, data.get(columns.get(i)));
+            }
+            return stmt.executeUpdate();
+        }
+    }
+
+    long updateRecord(ConnectionParams params, String table, String pkCol, JsonNode pkVal, String colName, JsonNode newVal, String schema, long maxBlobSize) throws SQLException {
+        String sql = "UPDATE " + DamengSql.qualifiedName(table, schema)
+                + " SET " + DamengSql.quoteIdentifier(colName) + " = ?"
+                + " WHERE " + DamengSql.quoteIdentifier(pkCol) + " = ?";
+        try (Connection conn = connect(params, false);
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setQueryTimeout(settings().queryTimeoutSec());
+            JdbcJson.bind(stmt, 1, newVal);
+            JdbcJson.bind(stmt, 2, pkVal);
+            return stmt.executeUpdate();
+        }
+    }
+
+    long deleteRecord(ConnectionParams params, String table, String pkCol, JsonNode pkVal, String schema) throws SQLException {
+        String sql = "DELETE FROM " + DamengSql.qualifiedName(table, schema)
+                + " WHERE " + DamengSql.quoteIdentifier(pkCol) + " = ?";
+        try (Connection conn = connect(params, false);
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setQueryTimeout(settings().queryTimeoutSec());
+            JdbcJson.bind(stmt, 1, pkVal);
+            return stmt.executeUpdate();
+        }
+    }
+
+    void createView(ConnectionParams params, String viewName, String definition, String schema) throws SQLException {
+        executeDdl(params, schema, "CREATE OR REPLACE VIEW " + DamengSql.qualifiedName(viewName, schema) + " AS\n" + definition);
+    }
+
+    void alterView(ConnectionParams params, String viewName, String definition, String schema) throws SQLException {
+        createView(params, viewName, definition, schema);
+    }
+
+    void dropView(ConnectionParams params, String viewName, String schema) throws SQLException {
+        executeDdl(params, schema, "DROP VIEW " + DamengSql.qualifiedName(viewName, schema));
+    }
+
+    void dropIndex(ConnectionParams params, String table, String indexName, String schema) throws SQLException {
+        executeDdl(params, schema, "DROP INDEX " + DamengSql.quoteIdentifier(indexName));
+    }
+
+    void dropForeignKey(ConnectionParams params, String table, String fkName, String schema) throws SQLException {
+        executeDdl(params, schema, "ALTER TABLE " + DamengSql.qualifiedName(table, schema)
+                + " DROP CONSTRAINT " + DamengSql.quoteIdentifier(fkName));
+    }
+
+    void createTrigger(ConnectionParams params, String triggerSql, String schema) throws SQLException {
+        executeDdl(params, schema, triggerSql);
+    }
+
+    void dropTrigger(ConnectionParams params, String triggerName, String tableName, String schema) throws SQLException {
+        executeDdl(params, schema, "DROP TRIGGER " + DamengSql.qualifiedName(triggerName, schema));
     }
 
     ObjectNode explainQuery(ConnectionParams params, String query, boolean analyze, String schema) throws SQLException {
@@ -429,6 +507,7 @@ class DamengClient {
         try (Connection conn = connect(params)) {
             // DM materializes EXPLAIN FOR internally and rejects it when the JDBC connection is marked read-only.
             conn.setReadOnly(false);
+            applySchema(conn, schema);
             try (Statement stmt = conn.createStatement()) {
                 stmt.setQueryTimeout(settings().queryTimeoutSec());
                 try (ResultSet rs = stmt.executeQuery(explainSql)) {
@@ -445,14 +524,37 @@ class DamengClient {
         }
     }
 
+    private void executeDdl(ConnectionParams params, String schema, String sql) throws SQLException {
+        try (Connection conn = connect(params, false);
+             Statement stmt = conn.createStatement()) {
+            applySchema(conn, schema);
+            stmt.setQueryTimeout(settings().queryTimeoutSec());
+            stmt.execute(sql);
+        }
+    }
+
     private Connection connect(ConnectionParams params) throws SQLException {
+        return connect(params, true);
+    }
+
+    private Connection connect(ConnectionParams params, boolean readOnly) throws SQLException {
         PluginSettings current = settings();
         Connection conn = driver.connect(params.jdbcUrl(), params.properties(current.connectTimeoutMs()));
         if (conn == null) {
             throw new SQLException("Dameng JDBC driver refused URL: " + params.jdbcUrl());
         }
-        conn.setReadOnly(true);
+        conn.setReadOnly(readOnly);
         return conn;
+    }
+
+    private void applySchema(Connection conn, String schema) throws SQLException {
+        if (schema == null || schema.isBlank()) {
+            return;
+        }
+        try (Statement stmt = conn.createStatement()) {
+            stmt.setQueryTimeout(settings().queryTimeoutSec());
+            stmt.execute("SET SCHEMA " + DamengSql.quoteIdentifier(schema));
+        }
     }
 
     private List<String> getTables(Connection conn, String owner) throws SQLException {

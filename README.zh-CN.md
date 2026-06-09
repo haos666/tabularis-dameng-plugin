@@ -1,6 +1,6 @@
 # Tabularis DM 插件
 
-[Tabularis](https://github.com/TabularisDB/tabularis) 的只读 [DM / 达梦数据库](https://www.dameng.com/) 驱动插件。
+[Tabularis](https://github.com/TabularisDB/tabularis) 的 [DM / 达梦数据库](https://www.dameng.com/) 驱动插件。
 
 插件是一个独立 Java 进程，通过 stdin/stdout 上的 JSON-RPC 2.0 与 Tabularis 通信。插件运行时从用户配置的本地路径加载官方达梦 JDBC 驱动。本仓库和发布产物都不会分发达梦 JDBC 二进制文件。
 
@@ -17,11 +17,14 @@
 - 预实现 trigger 元数据 RPC，等待 Tabularis 主项目后续插件桥接
 - 批量返回列和外键元数据，加快 Tabularis 浏览
 - 返回 schema 快照，支持 Tabularis ER 图
-- 执行只读 SQL 查询
+- 在 SQL 编辑器执行查询、DML 和 DDL
+- 支持 Tabularis 行编辑 UI 的新增、更新、删除
+- 生成表、列、索引、外键管理 SQL
+- 创建、修改、删除视图
+- 删除索引和外键
 - 返回 Tabularis 兼容的结果集
-- 拒绝写入、CRUD 和 DDL 操作
 
-插件仍然保持只读。routine 执行、触发器、写操作、DDL、表结构管理、视图管理和 UI 扩展暂不实现。
+routine 执行和 routine 管理暂不实现。trigger 创建/删除 RPC 已在插件侧实现，但当前 Tabularis external plugin adapter 版本尚未转发这些写入 RPC，因此 UI 中可能暂时不可达。
 
 ## 环境要求
 
@@ -46,7 +49,7 @@ chmod +x dameng-plugin
 构建产物位置：
 
 ```text
-target/tabularis-dameng-plugin-0.4.0.jar
+target/tabularis-dameng-plugin-0.5.0.jar
 ```
 
 ## 本地安装
@@ -64,7 +67,7 @@ PLUGIN_DIR="$HOME/Library/Application Support/com.debba.tabularis/plugins/dameng
 
 mkdir -p "$PLUGIN_DIR/target"
 cp manifest.json dameng-plugin dameng-plugin.bat "$PLUGIN_DIR/"
-cp target/tabularis-dameng-plugin-0.4.0.jar "$PLUGIN_DIR/target/"
+cp target/tabularis-dameng-plugin-0.5.0.jar "$PLUGIN_DIR/target/"
 chmod +x "$PLUGIN_DIR/dameng-plugin"
 ```
 
@@ -108,14 +111,14 @@ schema 由 Tabularis 单独选择和传递。
 
 本地验证时，Docker 达梦实例里的 `DEV2` schema 已准备了一组销售业务演示数据：
 
-- 表：`CUSTOMERS`、`PRODUCTS`、`ORDERS`、`ORDER_ITEMS`
+- 表：`CUSTOMERS`、`PRODUCTS`、`ORDERS`、`ORDER_ITEMS`、`ORDER_AUDIT`、`T_WRITE_TEST`
 - 外键：订单关联客户、订单明细关联订单、订单明细关联产品
 - 索引：客户/订单/产品查询索引，以及 `UX_PRODUCTS_SKU`
 - 视图：`V_ORDER_SUMMARY`、`V_ORDER_DETAIL`、`V_CUSTOMER_LIFETIME_VALUE`、`V_PRODUCT_SALES`
 - 函数/过程：`FN_CUSTOMER_ORDER_COUNT`、`FN_CUSTOMER_TOTAL_AMOUNT`、`P_REFRESH_ORDER_STATS`
 - 触发器：`TRG_ORDERS_AUDIT`
 
-这套数据已在 Tabularis 本地验证通过：schema、表、列、索引、外键、视图、视图列、视图查询、函数/过程、routine 参数、Visual Explain 和 ER 元数据都可以通过 `DM` 插件正常展示。
+这套数据已在 Tabularis 本地验证通过：schema、表、列、索引、外键、视图、视图列、视图查询、函数/过程、routine 参数、Visual Explain、ER 元数据、SQL 写入、行编辑以及视图/索引/外键管理路径都可以通过 `DM` 插件正常工作。
 
 可复用初始化脚本在 `docs/demo-schema.sql`。
 
@@ -124,21 +127,21 @@ schema 由 Tabularis 单独选择和传递。
 - stdout 只输出 JSON-RPC 响应。
 - 日志和诊断信息输出到 stderr。
 - `initialize` 使用 `URLClassLoader` 加载 `dm.jdbc.driver.DmDriver`。
-- `execute_query` 只允许 `SELECT`、`WITH`、`EXPLAIN` 开头的 SQL。
+- `execute_query` 从 v0.5.0 开始允许 SQL 编辑器写入和 DDL。有结果集的语句返回 rows；无结果集的语句返回 `affected_rows`。
 - `get_databases` 返回可见 schema，方便 Tabularis 连接窗口中的“加载数据库”按钮有可选值。
 - `get_schema_snapshot` 返回表、列和外键，供 Tabularis ER 图使用。
-- `get_views`、`get_view_definition`、`get_view_columns` 只做只读查看。
+- `get_views`、`get_view_definition`、`get_view_columns` 查看视图；`create_view`、`alter_view`、`drop_view` 管理视图。
 - `get_routines`、`get_routine_parameters` 只暴露函数/过程元数据。
 - routine 定义优先读取 `ALL_SOURCE`；如果达梦未保存源码或权限不足，插件会返回生成的签名。
 - `explain_query` 使用达梦 `EXPLAIN FOR`，把 JDBC 返回的计划行解析为 Tabularis `ExplainPlan` 树，并保留原始计划行；旧的文本 EXPLAIN 解析保留为兜底。
-- `get_triggers`、`get_trigger_definition` 已在插件侧实现；但当前 Tabularis external plugin driver 版本可能还不会调用它们，需要主项目后续增加 trigger RPC 转发。
+- `get_triggers`、`get_trigger_definition` 已实现。`create_trigger` 和 `drop_trigger` 也已在插件侧实现；但当前 Tabularis external plugin driver 版本可能还不会调用 trigger 写入 RPC，需要主项目后续增加转发。
 
 ## 发布包内容
 
 发布产物命名示例：
 
 ```text
-tabularis-dameng-plugin-0.4.0.zip
+tabularis-dameng-plugin-0.5.0.zip
 ```
 
 zip 应包含：
@@ -147,7 +150,7 @@ zip 应包含：
 dameng-plugin
 dameng-plugin.bat
 manifest.json
-target/tabularis-dameng-plugin-0.4.0.jar
+target/tabularis-dameng-plugin-0.5.0.jar
 ```
 
 不要包含：

@@ -20,8 +20,19 @@ final class SqlSafety {
             throw new RpcException(-32602, "Query is empty.");
         }
         if (BLOCKED_STARTERS.contains(first) || !READONLY_STARTERS.contains(first)) {
-            throw new RpcException(-32603, "Dameng plugin is read-only; only SELECT/WITH/EXPLAIN queries are allowed.");
+            throw new RpcException(-32603, "Only SELECT/WITH/EXPLAIN queries can be explained.");
         }
+    }
+
+    static void requireNotEmpty(String sql) {
+        if (firstToken(sql) == null) {
+            throw new RpcException(-32602, "Query is empty.");
+        }
+    }
+
+    static boolean isReadOnlyQuery(String sql) {
+        String first = firstToken(sql);
+        return first != null && READONLY_STARTERS.contains(first);
     }
 
     static String firstToken(String sql) {
