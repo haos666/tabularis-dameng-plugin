@@ -11,7 +11,6 @@ import java.sql.Date;
 import java.sql.Time;
 import java.sql.Timestamp;
 import java.sql.Types;
-import java.util.Base64;
 import java.util.Locale;
 
 final class JdbcJson {
@@ -104,16 +103,7 @@ final class JdbcJson {
     }
 
     private static void bindBytes(PreparedStatement stmt, int index, JsonNode value, long maxBlobSize) throws SQLException {
-        byte[] bytes;
-        try {
-            bytes = Base64.getDecoder().decode(base64Text(value));
-        } catch (IllegalArgumentException e) {
-            throw new RpcException(-32602, "Binary values must be base64 encoded.");
-        }
-        if (maxBlobSize > 0 && bytes.length > maxBlobSize) {
-            throw new RpcException(-32602, "Binary value is " + bytes.length + " bytes, exceeding max_blob_size " + maxBlobSize + ".");
-        }
-        stmt.setBytes(index, bytes);
+        stmt.setBytes(index, BlobWire.decode(text(value), maxBlobSize));
     }
 
     private static void bindClob(PreparedStatement stmt, int index, JsonNode value, long maxBlobSize) throws SQLException {
@@ -143,15 +133,6 @@ final class JdbcJson {
 
     private static String timestampText(JsonNode value) {
         return text(value).replace('T', ' ');
-    }
-
-    private static String base64Text(JsonNode value) {
-        String text = text(value).strip();
-        int comma = text.indexOf(',');
-        if (text.regionMatches(true, 0, "data:", 0, 5) && comma >= 0) {
-            return text.substring(comma + 1);
-        }
-        return text;
     }
 
     private static boolean isBinaryType(String typeName) {

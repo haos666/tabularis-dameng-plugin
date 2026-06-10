@@ -21,7 +21,8 @@
 - 在 SQL 编辑器执行查询、DML 和 DDL
 - 通过插件侧 `execute_query_batch` JSON-RPC 执行多语句批处理
 - 支持 Tabularis 行编辑 UI 的新增、更新、删除
-- 行编辑按目标 JDBC 列类型绑定参数，支持 BLOB/VARBINARY base64 和 CLOB 文本
+- 行编辑按目标 JDBC 列类型绑定参数，支持 Tabularis BLOB wire、base64/data URI 二进制值和 CLOB 文本
+- BLOB/VARBINARY 查询结果返回 Tabularis 可识别的 BLOB wire format
 - 支持对 identity/default-only 表执行空 `insert_record`
 - 生成表、列、索引、外键管理 SQL
 - 更稳定地生成列 rename、nullable、default、comment 变更 DDL
@@ -30,7 +31,7 @@
 - 删除索引和外键
 - 返回 Tabularis 兼容的结果集
 
-routine 执行和 routine 管理暂不实现。trigger 浏览、查看 RPC 已实现，并通过 `capabilities.triggers` 暴露给 Tabularis；trigger 创建、删除 RPC 也已在插件侧实现，但当前 Tabularis external adapter 仍可能在触发器创建弹窗拦截，需要主项目后续补转发。`execute_query_batch` 也已在插件侧实现；当前 Tabularis external adapter 版本可能仍会把 SQL 编辑器批处理拆成多次 `execute_query`，直到主项目后续增加 adapter override。
+routine 执行和 routine 管理暂不实现。trigger 浏览、查看、创建、删除 RPC 已实现，并通过 `capabilities.triggers` 暴露给 Tabularis；UI 是否可见取决于当前安装的 Tabularis 版本。`execute_query_batch` 已在插件侧实现；当前 Tabularis external adapter 版本可能仍会把 SQL 编辑器批处理拆成多次 `execute_query`，直到主项目后续增加 adapter override。
 
 ## 环境要求
 
@@ -55,7 +56,7 @@ chmod +x dameng-plugin
 构建产物位置：
 
 ```text
-target/tabularis-dameng-plugin-0.9.0.jar
+target/tabularis-dameng-plugin-1.0.0.jar
 ```
 
 ## 本地安装
@@ -73,7 +74,7 @@ PLUGIN_DIR="$HOME/Library/Application Support/com.debba.tabularis/plugins/dameng
 
 mkdir -p "$PLUGIN_DIR/target"
 cp manifest.json dameng-plugin dameng-plugin.bat "$PLUGIN_DIR/"
-cp target/tabularis-dameng-plugin-0.9.0.jar "$PLUGIN_DIR/target/"
+cp target/tabularis-dameng-plugin-1.0.0.jar "$PLUGIN_DIR/target/"
 chmod +x "$PLUGIN_DIR/dameng-plugin"
 ```
 
@@ -124,7 +125,7 @@ schema 由 Tabularis 单独选择和传递。
 - 函数/过程：`FN_CUSTOMER_ORDER_COUNT`、`FN_CUSTOMER_TOTAL_AMOUNT`、`P_REFRESH_ORDER_STATS`
 - 触发器：`TRG_ORDERS_AUDIT`
 
-这套数据已在 Tabularis 本地验证通过：schema、表、表注释、列、列注释、索引、外键、视图、视图列、视图查询、函数/过程、routine 参数、触发器、触发器定义、Visual Explain、ER 元数据、SQL 写入、行编辑、按列类型写入、BLOB/CLOB 冒烟测试、空默认值插入以及视图/索引/外键管理路径都可以通过 `DM` 插件正常工作。触发器创建/删除 RPC 已在插件协议侧可用；当前 Tabularis external adapter 构建可能还需要主项目补路由后，触发器创建弹窗才能真正调用它们。
+这套数据已在 Tabularis 本地验证通过：schema、表、表注释、列、列注释、索引、外键、视图、视图列、视图查询、函数/过程、routine 参数、触发器、触发器定义、Visual Explain、ER 元数据、SQL 写入、行编辑、按列类型写入、BLOB/CLOB 冒烟测试、空默认值插入以及视图/索引/外键管理路径都可以通过 `DM` 插件正常工作。触发器创建/删除 RPC 已在插件协议侧可用；UI 入口是否可用取决于当前安装的 Tabularis 构建。
 
 可复用初始化脚本在 `docs/demo-schema.sql`。
 
@@ -135,7 +136,9 @@ schema 由 Tabularis 单独选择和传递。
 - `initialize` 使用 `URLClassLoader` 加载 `dm.jdbc.driver.DmDriver`。
 - `execute_query` 允许 SQL 编辑器写入和 DDL。有结果集的语句返回 rows；无结果集的语句返回 `affected_rows`。
 - `execute_query_batch` 在同一个 JDBC 连接上按顺序执行多条语句，保持 autocommit，不自动包事务，单条失败后继续执行后续语句，并为每条语句返回 `{ result, error, execution_time_ms }`。该 RPC 可直接用 JSON-RPC 测试；当前 Tabularis external adapter 版本可能尚未转发。
-- `insert_record`、`update_record` 会按目标列 JDBC metadata 绑定参数。BLOB/VARBINARY 使用 base64 字符串，可带 `data:*;base64,...` 前缀；CLOB/LONGVARCHAR 使用普通文本字符串。
+- `insert_record`、`update_record` 会按目标列 JDBC metadata 绑定参数。BLOB/VARBINARY 接受纯 base64、`data:*;base64,...`、`BLOB:<size>:<mime>:<base64>` 和 `BLOB_FILE_REF:<size>:<mime>:<filepath>`；CLOB/LONGVARCHAR 使用普通文本字符串。
+- BLOB/VARBINARY 查询结果返回 `BLOB:<size>:application/octet-stream:<base64>`，让 Tabularis 能识别二进制单元格；CLOB/LONGVARCHAR 查询结果继续返回普通文本。
+- `max_blob_size` 同时约束 base64、data URI、BLOB wire、file-ref 写入；`0` 表示不限制。
 - 空 `insert_record` data 会转换为 `INSERT ... DEFAULT VALUES`，用于 identity/default-only 表。
 - DDL preview 会用稳定语句处理列 rename、nullable、default、comment 变更。
 - JDBC 错误会补充 method/action 上下文，同时保留达梦原始错误、SQLState 和 vendor code。
@@ -151,12 +154,33 @@ schema 由 Tabularis 单独选择和传递。
 - `explain_query` 使用达梦 `EXPLAIN FOR`，把 JDBC 返回的计划行解析为 Tabularis `ExplainPlan` 树，并保留原始计划行；旧的文本 EXPLAIN 解析保留为兜底。
 - `get_triggers`、`get_trigger_definition` 已实现，并通过 `capabilities.triggers: true` 暴露；插件侧 `create_trigger`、`drop_trigger` 已为直接 JSON-RPC 和后续主项目转发准备好。
 
+## 协议冒烟测试
+
+执行 `mvn clean package` 后，可以通过环境变量运行直接 JSON-RPC 冒烟测试：
+
+```bash
+export DM_JDBC_DRIVER_PATH="/path/to/DmJdbcDriver8.jar"
+export DM_HOST="127.0.0.1"
+export DM_PORT="5236"
+export DM_USER="DEV2"
+export DM_PASSWORD="Dev2_123456@"
+export DM_SCHEMA="DEV2"
+
+bash scripts/protocol-smoke.sh
+```
+
+该测试覆盖连接、元数据、视图、routine、trigger、explain、execute、batch、行 CRUD、DDL preview 和 BLOB/CLOB wire。详见 `docs/protocol-smoke.md`。
+
+## 主项目沟通清单
+
+插件侧 1.0 基线已经按当前 external driver contract 收口。完整 UI 对齐还需要主项目配合的事项记录在 `docs/tabularis-upstream-gaps.md`，包括 external `execute_query_batch` 转发、BLOB 预览/导出 RPC 转发、Oracle/DM PL/SQL splitter、manifest schema trigger capability，以及插件指南字段名更新。
+
 ## 发布包内容
 
 发布产物命名示例：
 
 ```text
-tabularis-dameng-plugin-0.9.0.zip
+tabularis-dameng-plugin-1.0.0.zip
 ```
 
 zip 应包含：
@@ -165,7 +189,7 @@ zip 应包含：
 dameng-plugin
 dameng-plugin.bat
 manifest.json
-target/tabularis-dameng-plugin-0.9.0.jar
+target/tabularis-dameng-plugin-1.0.0.jar
 ```
 
 不要包含：

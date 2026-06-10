@@ -15,7 +15,6 @@ import java.sql.Time;
 import java.sql.Timestamp;
 import java.sql.Types;
 import java.time.format.DateTimeFormatter;
-import java.util.Base64;
 
 final class ResultSetJson {
     private ResultSetJson() {
@@ -86,7 +85,7 @@ final class ResultSetJson {
             case Types.DATE -> Json.NODES.textNode(((Date) raw).toLocalDate().toString());
             case Types.TIME, Types.TIME_WITH_TIMEZONE -> Json.NODES.textNode(timeText(raw));
             case Types.TIMESTAMP, Types.TIMESTAMP_WITH_TIMEZONE -> Json.NODES.textNode(timestampText(raw));
-            case Types.BINARY, Types.VARBINARY, Types.LONGVARBINARY -> Json.NODES.textNode(Base64.getEncoder().encodeToString(rs.getBytes(index)));
+            case Types.BINARY, Types.VARBINARY, Types.LONGVARBINARY -> Json.NODES.textNode(BlobWire.encode(rs.getBytes(index)));
             case Types.BLOB -> Json.NODES.textNode(blobText((Blob) raw));
             case Types.CLOB, Types.NCLOB -> Json.NODES.textNode(clobText((Clob) raw));
             default -> Json.NODES.textNode(raw.toString());
@@ -120,7 +119,7 @@ final class ResultSetJson {
         if (length > Integer.MAX_VALUE) {
             return "<BLOB " + length + " bytes>";
         }
-        return Base64.getEncoder().encodeToString(blob.getBytes(1, (int) length));
+        return BlobWire.encode(blob.getBytes(1, (int) length));
     }
 
     private static String clobText(Clob clob) throws SQLException {

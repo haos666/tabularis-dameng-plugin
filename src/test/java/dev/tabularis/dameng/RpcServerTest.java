@@ -19,7 +19,7 @@ final class RpcServerTest {
     void manifestAdvertisesTriggerCapabilityAndVersion() throws Exception {
         var manifest = Json.MAPPER.readTree(Files.readString(Path.of("manifest.json")));
 
-        assertEquals("0.9.0", manifest.path("version").asText());
+        assertEquals("1.0.0", manifest.path("version").asText());
         assertTrue(manifest.path("capabilities").path("triggers").asBoolean());
         assertEquals("DM", manifest.path("name").asText());
         assertTrue(manifest.path("data_types").findValuesAsText("name").contains("VARBINARY"));
