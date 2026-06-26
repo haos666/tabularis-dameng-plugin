@@ -56,10 +56,14 @@ chmod +x dameng-plugin
 构建产物位置：
 
 ```text
-target/tabularis-dameng-plugin-1.0.0.jar
+target/tabularis-dameng-plugin-1.0.1.jar
 ```
 
 ## 本地安装
+
+插件被 Tabularis 插件中心收录后，可以在 `Settings -> Plugins -> Plugin Center`
+中直接安装。达梦 JDBC 驱动仍然不会随插件分发：安装后仍需在插件设置里把
+`jdbc_driver_path` 指向本地的 `DmJdbcDriver*.jar`。
 
 Tabularis 当前用户插件目录：
 
@@ -74,7 +78,7 @@ PLUGIN_DIR="$HOME/Library/Application Support/com.debba.tabularis/plugins/dameng
 
 mkdir -p "$PLUGIN_DIR/target"
 cp manifest.json dameng-plugin dameng-plugin.bat "$PLUGIN_DIR/"
-cp target/tabularis-dameng-plugin-1.0.0.jar "$PLUGIN_DIR/target/"
+cp target/tabularis-dameng-plugin-1.0.1.jar "$PLUGIN_DIR/target/"
 chmod +x "$PLUGIN_DIR/dameng-plugin"
 ```
 
@@ -180,7 +184,7 @@ bash scripts/protocol-smoke.sh
 发布产物命名示例：
 
 ```text
-tabularis-dameng-plugin-1.0.0.zip
+tabularis-dameng-plugin-1.0.1.zip
 ```
 
 zip 应包含：
@@ -189,7 +193,9 @@ zip 应包含：
 dameng-plugin
 dameng-plugin.bat
 manifest.json
-target/tabularis-dameng-plugin-1.0.0.jar
+.tabularium
+assets/icon.svg
+target/tabularis-dameng-plugin-1.0.1.jar
 ```
 
 不要包含：

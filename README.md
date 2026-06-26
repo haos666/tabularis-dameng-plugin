@@ -56,10 +56,15 @@ chmod +x dameng-plugin
 The executable jar is written to:
 
 ```text
-target/tabularis-dameng-plugin-1.0.0.jar
+target/tabularis-dameng-plugin-1.0.1.jar
 ```
 
 ## Install Locally
+
+After this plugin is listed in the Tabularis Plugin Center, you can install it from
+`Settings -> Plugins -> Plugin Center`. The Dameng JDBC driver is still not bundled:
+after installation, configure `jdbc_driver_path` to point at your local
+`DmJdbcDriver*.jar`.
 
 Tabularis currently stores user-installed plugins under:
 
@@ -74,7 +79,7 @@ PLUGIN_DIR="$HOME/Library/Application Support/com.debba.tabularis/plugins/dameng
 
 mkdir -p "$PLUGIN_DIR/target"
 cp manifest.json dameng-plugin dameng-plugin.bat "$PLUGIN_DIR/"
-cp target/tabularis-dameng-plugin-1.0.0.jar "$PLUGIN_DIR/target/"
+cp target/tabularis-dameng-plugin-1.0.1.jar "$PLUGIN_DIR/target/"
 chmod +x "$PLUGIN_DIR/dameng-plugin"
 ```
 
@@ -180,7 +185,7 @@ The plugin-side 1.0 baseline is complete for the current external driver contrac
 Release artifacts are named like:
 
 ```text
-tabularis-dameng-plugin-1.0.0.zip
+tabularis-dameng-plugin-1.0.1.zip
 ```
 
 The zip should include:
@@ -189,7 +194,9 @@ The zip should include:
 dameng-plugin
 dameng-plugin.bat
 manifest.json
-target/tabularis-dameng-plugin-1.0.0.jar
+.tabularium
+assets/icon.svg
+target/tabularis-dameng-plugin-1.0.1.jar
 ```
 
 Do not include:

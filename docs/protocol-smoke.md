@@ -28,7 +28,7 @@ bash scripts/protocol-smoke.sh
 Optional variables:
 
 ```bash
-export PLUGIN_JAR="target/tabularis-dameng-plugin-1.0.0.jar"
+export PLUGIN_JAR="target/tabularis-dameng-plugin-1.0.1.jar"
 export DM_CONNECT_TIMEOUT_MS="10000"
 export DM_QUERY_TIMEOUT_SEC="60"
 ```

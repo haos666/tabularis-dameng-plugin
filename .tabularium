@@ -1,18 +1,35 @@
 {
-  "$schema": "https://tabularis.dev/schemas/plugin-manifest.json",
-  "id": "dameng",
-  "name": "DM",
+  "$schema": "https://registry.tabularis.dev/manifest.schema.json?kind=driver",
+  "name": "dameng",
   "version": "1.0.1",
-  "description": "Dameng database driver using a user-provided JDBC jar.",
+  "description": "DM / Dameng database driver for Tabularis using a user-provided JDBC driver.",
+  "category": "database",
+  "kind": "driver",
+  "engine": "dameng",
+  "paradigms": ["relational"],
+  "tags": ["dameng", "dm", "database", "jdbc", "sql", "driver"],
+  "license": "Apache-2.0",
+  "icon": "assets/icon.svg",
+  "readme": "README.md",
+  "readmes": {
+    "zh-CN": "README.zh-CN.md"
+  },
+  "documentation_url": "https://github.com/haos666/tabularis-dameng-plugin/blob/main/README.md",
+  "homepage": "https://github.com/haos666/tabularis-dameng-plugin",
+  "support": {
+    "issues_url": "https://github.com/haos666/tabularis-dameng-plugin/issues"
+  },
+  "min_runtime_version": "0.13.1",
+  "color": "#0f766e",
   "default_port": 5236,
   "default_username": "SYSDBA",
   "executable": "dameng-plugin",
-  "color": "#0f766e",
-  "icon": "database",
+  "is_builtin": false,
   "capabilities": {
     "schemas": true,
     "views": true,
     "routines": true,
+    "triggers": true,
     "file_based": false,
     "folder_based": false,
     "connection_string": true,
@@ -21,10 +38,9 @@
     "alter_primary_key": false,
     "alter_column": true,
     "create_foreign_keys": true,
-    "triggers": true,
     "manage_tables": true,
     "readonly": false,
-    "sql_dialect": "oracle"
+    "auto_increment_keyword": "IDENTITY(1,1)"
   },
   "settings": [
     {
@@ -38,23 +54,21 @@
       "key": "connect_timeout_ms",
       "label": "Connect Timeout (ms)",
       "type": "number",
-      "default": 10000,
       "description": "Connection timeout passed to the Dameng JDBC driver."
     },
     {
       "key": "query_timeout_sec",
       "label": "Query Timeout (sec)",
       "type": "number",
-      "default": 60,
       "description": "Maximum time a statement may run before JDBC cancels it."
     }
   ],
   "data_types": [
-    { "name": "INT", "category": "numeric", "requires_length": false, "requires_precision": false, "supports_auto_increment": true },
-    { "name": "INTEGER", "category": "numeric", "requires_length": false, "requires_precision": false, "supports_auto_increment": true },
-    { "name": "SMALLINT", "category": "numeric", "requires_length": false, "requires_precision": false, "supports_auto_increment": true },
-    { "name": "TINYINT", "category": "numeric", "requires_length": false, "requires_precision": false, "supports_auto_increment": true },
-    { "name": "BIGINT", "category": "numeric", "requires_length": false, "requires_precision": false, "supports_auto_increment": true },
+    { "name": "INT", "category": "numeric", "requires_length": false, "requires_precision": false },
+    { "name": "INTEGER", "category": "numeric", "requires_length": false, "requires_precision": false },
+    { "name": "SMALLINT", "category": "numeric", "requires_length": false, "requires_precision": false },
+    { "name": "TINYINT", "category": "numeric", "requires_length": false, "requires_precision": false },
+    { "name": "BIGINT", "category": "numeric", "requires_length": false, "requires_precision": false },
     { "name": "DECIMAL", "category": "numeric", "requires_length": false, "requires_precision": true },
     { "name": "NUMERIC", "category": "numeric", "requires_length": false, "requires_precision": true },
     { "name": "NUMBER", "category": "numeric", "requires_length": false, "requires_precision": true },

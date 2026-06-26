@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">DM database driver icon</title>
+  <desc id="desc">A teal database cylinder with the letters DM.</desc>
+  <rect width="256" height="256" rx="56" fill="#07111f"/>
+  <path d="M54 77c0-23 33-42 74-42s74 19 74 42v102c0 23-33 42-74 42s-74-19-74-42V77z" fill="#0f766e"/>
+  <path d="M202 77c0 23-33 42-74 42S54 100 54 77" fill="none" stroke="#5eead4" stroke-width="11"/>
+  <path d="M202 128c0 23-33 42-74 42s-74-19-74-42" fill="none" stroke="#5eead4" stroke-width="11" opacity=".72"/>
+  <path d="M202 179c0 23-33 42-74 42s-74-19-74-42" fill="none" stroke="#5eead4" stroke-width="11" opacity=".72"/>
+  <text x="128" y="150" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="58" font-weight="800" fill="#ecfeff">DM</text>
+</svg>

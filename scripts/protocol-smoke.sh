@@ -5,7 +5,7 @@ set -euo pipefail
 : "${DM_USER:?Set DM_USER.}"
 : "${DM_PASSWORD:?Set DM_PASSWORD.}"
 
-PLUGIN_JAR="${PLUGIN_JAR:-target/tabularis-dameng-plugin-1.0.0.jar}"
+PLUGIN_JAR="${PLUGIN_JAR:-target/tabularis-dameng-plugin-1.0.1.jar}"
 DM_HOST="${DM_HOST:-127.0.0.1}"
 DM_PORT="${DM_PORT:-5236}"
 DM_SCHEMA="${DM_SCHEMA:-$DM_USER}"
